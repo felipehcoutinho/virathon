@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Virathon is designed to automate the analysis of the genomes of viruses of Archaea and Bacteria, specially unvultured ones originated from metagenomic samples
+Virathon is designed to automate the analysis of the genomes of viruses of Archaea and Bacteria, specially uncultured ones originated from metagenomic samples
 
 ***
 
