@@ -22,3 +22,14 @@ Virathon is writen in Python 3 and uses multiple external depencies.
 - [VirHostMatcher-Net](https://github.com/WeiliWw/VirHostMatcher-Net)
 
 ***
+
+## Commands
+### Querying a protein file in fasta format against a hmmer formateed database using hmmsearch:
+`python3 virathon_v0.1.py --call_hmmer True --cds My_CDS.faa --hmmer_program hmmsearch --hmmer_db My_Hmmer_DB.hmm`
+This will generate the following files:
+- My_CDSxMy_Hmmer_DB.hmmsearch
+
+### Querying a protein file in fasta format against a hmmer formateed database using hmmscan:
+`python3 virathon_v0.1.py --call_hmmer True --cds My_CDS.faa --hmmer_program hmmsscan --hmmer_db My_Hmmer_DB.hmm`
+This will generate the following files:
+- My_CDSxMy_Hmmer_DB.hmmscan
