@@ -16,6 +16,7 @@ Virathon is writen in Python 3 and uses multiple external depencies.
 - [MMSeqs2](https://github.com/soedinglab/MMseqs2)
 - [NCBI BLAST+](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)
 - [Prodigal](https://github.com/hyattpd/Prodigal)
+- [RaFAH](https://sourceforge.net/projects/rafah/)
 - [Samtools](http://www.htslib.org/)
 - [SPAdes](https://github.com/ablab/spades)
 - [VIBRANT](https://github.com/AnantharamanLab/VIBRANT)
@@ -24,12 +25,20 @@ Virathon is writen in Python 3 and uses multiple external depencies.
 ***
 
 ## Commands
+### Running host predictions with RaFAH starting from a genomes fasta file:
+`python3 virathon_v0.1.py --call_rafah True --genome My_Genomes.fasta`
+
+### Running host predictions with RaFAH starting from a CDS fasta file:
+`python3 virathon_v0.1.py --call_rafah True --cds My_CDS.faa`
+
 ### Querying a protein file in fasta format against a hmmer formateed database using hmmsearch:
 `python3 virathon_v0.1.py --call_hmmer True --cds My_CDS.faa --hmmer_program hmmsearch --hmmer_db My_Hmmer_DB.hmm`
+
 This will generate the following files:
 - My_CDSxMy_Hmmer_DB.hmmsearch
 
 ### Querying a protein file in fasta format against a hmmer formateed database using hmmscan:
 `python3 virathon_v0.1.py --call_hmmer True --cds My_CDS.faa --hmmer_program hmmsscan --hmmer_db My_Hmmer_DB.hmm`
+
 This will generate the following files:
 - My_CDSxMy_Hmmer_DB.hmmscan
