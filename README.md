@@ -28,16 +28,31 @@ Virathon is writen in Python 3 and uses multiple external depencies.
 ### Running host predictions with RaFAH starting from a genomes fasta file:
 `python3 virathon_v0.1.py --call_rafah True --genome My_Genomes.fasta`
 
+This will generate the following files:
+- My_Genomes.faa
+- My_Genomes.fna
+- My_Genomes.gff
+- RaFAH_My_Genomes_Seq_Info_Prediction.tsv
+- RaFAH_My_Genomes_Host_Predictions.tsv
+- RaFAH_My_Genomes_Genome_to_OG_Score_Min_Score_50-Max_evalue_1e-05_Prediction.tsv
+- RaFAH_My_Genomes_CDSxClusters_Prediction
+
 ### Running host predictions with RaFAH starting from a CDS fasta file:
 `python3 virathon_v0.1.py --call_rafah True --cds My_CDS.faa`
 
-### Querying a protein file in fasta format against a hmmer formateed database using hmmsearch:
+This will generate the following files:
+- RaFAH_My_Genomes_Seq_Info_Prediction.tsv
+- RaFAH_My_Genomes_Host_Predictions.tsv
+- RaFAH_My_Genomes_Genome_to_OG_Score_Min_Score_50-Max_evalue_1e-05_Prediction.tsv
+- RaFAH_My_Genomes_CDSxClusters_Prediction
+
+### Querying a protein file in fasta format against a hmmer formatted database using hmmsearch:
 `python3 virathon_v0.1.py --call_hmmer True --cds My_CDS.faa --hmmer_program hmmsearch --hmmer_db My_Hmmer_DB.hmm`
 
 This will generate the following files:
 - My_CDSxMy_Hmmer_DB.hmmsearch
 
-### Querying a protein file in fasta format against a hmmer formateed database using hmmscan:
+### Querying a protein file in fasta format against a hmmer formatted database using hmmscan:
 `python3 virathon_v0.1.py --call_hmmer True --cds My_CDS.faa --hmmer_program hmmsscan --hmmer_db My_Hmmer_DB.hmm`
 
 This will generate the following files:
