@@ -20,6 +20,8 @@ parser.add_argument("--call_vibrant_module", help="Flag to run the VIBRANT modul
 parser.add_argument("--call_checkv_module", help="Flag to run the CheckV module", default=False, type=bool)
 parser.add_argument("--call_vhmnet_module", help="Flag to run the VirHostMatcher-Net module", default=False, type=bool)
 parser.add_argument("--vhmnet_mode_short", help="Flag to run the VirHostMatcher-Net using the --short-contig flag", default=False, type=bool)
+parser.add_argument("--call_rafah", help="Flag to run the RaFAH module for host prediction", default=False, type=bool)
+parser.add_argument("--rafah_min_score", help="Minimum RaFAH score to consider a prediction as valid", default=0, type=float)
 parser.add_argument("--metabat2", help="Flag to perform sequence binning through Metabat2", default=False, type=bool)
 parser.add_argument("--make_pops_module", help="Flag to run the viral population pipeline", default=False, type=bool)
 parser.add_argument("--make_plots_module", help="Flag to run the Plotting module based on the collected Seq Info", default=False, type=bool)
@@ -31,6 +33,9 @@ parser.add_argument("--pps_min_perc_matched", help="Minimum percentage of matche
 parser.add_argument("--pps_min_matched", help="Minimum number of matched CDS to report in the PPS table", default=3, type=int)
 parser.add_argument("--call_ogtable_module", help="Flag to run the Orthologous Group table generation module", default=False, type=bool)
 parser.add_argument("--call_ogscoretable_module", help="Flag to run the Orthologous Group Score table generation module", default=False, type=bool)
+parser.add_argument("--call_hmmer", help="Flag to query the CDS file against a hmmer database", default=False, type=bool)
+parser.add_argument("--hmmer_db", help="Hmmer DB file prefix", default=False, type=str)
+parser.add_argument("--hmmer_program", help="Hmmer program to run (hmmscan or hmmsearch)", default='hmmsearch', type=str)
 parser.add_argument("--abundance_table", help="Flag to run the abundance calculation modules", default=False, type=bool)
 parser.add_argument("--abundance_rpkm", help="Flag to calculate abundance as RPKM", default=False, type=bool)
 parser.add_argument("--metagenomes_dir", help="Directory containing metagenome fastq files to be used for abundance calculation", type=str)
@@ -98,6 +103,18 @@ def central():
 	vhmnet_out_dir = 'NA'
 	if (args.call_vhmnet_module == True):
 		vhmnet_out_dir = call_vhmnet(merged_genomes_file)
+	rafah_out_file = 'NA'
+	if (args.call_rafah == True):
+		rafah_out_file = call_rafah(merged_genomes_file,args.cds,args.rafah_min_score)
+	#If specificed by the user (args.hmmer == True) run the hmmer module
+	if (args.call_hmmer == True):
+		hmmer_search_outfile = call_hmmer(args.cds,args.hmmer_db,args.hmmer_program)
+		(genome_hmm_scores,pairwise_scores) = parse_hmmer_output(hmmer_search_outfile)
+		#Print pairwise_scores to og_score_table_out_file
+		pairwise_score_table_out_file = 'OG_Pairwise_Score_Table_'+hmmer_search_outfile+'.tsv'
+		pairwise_score_table_data_frame = pd.DataFrame.from_dict(pairwise_scores)
+		print(f'Printing OG x CDS pairwise scores table to {pairwise_score_table_out_file}')
+		pairwise_score_table_data_frame.to_csv(pairwise_score_table_out_file,sep="\t",na_rep='NA')
 	#If specified by the user perform clustering of proteins into OGs and Index the results
 	og_table_out_file = 'NA'
 	if (args.call_ogtable_module == True):
@@ -117,9 +134,215 @@ def central():
 	if (args.pairwise_protein_scores == True):
 		calc_pps(merged_genomes_file,args.cds,args.pps_subject_fasta,args.pps_subject_db)
 	#Always print the results collected in seq_info
-	print_results(seq_info,og_table_out_file,og_score_table_out_file,vibrant_out_quality_file,vibrant_out_amg_file,checkv_out_summary_file,vhmnet_out_dir,args.info_output,merged_genomes_file,metabat_out_file)
+	print_results(seq_info,og_table_out_file,og_score_table_out_file,vibrant_out_quality_file,vibrant_out_amg_file,checkv_out_summary_file,vhmnet_out_dir,args.info_output,merged_genomes_file,metabat_out_file,rafah_out_file)
 
+def print_results(info_dict,og_table_out_file,og_score_table_out_file,vibrant_out_quality_file,vibrant_out_amg_file,checkv_out_summary_file,vhmnet_out_dir,output_dataframe_file,merged_genomes_file,metabat_out_file,rafah_out_file):
+	#Convert the 2d dictionary info_dict into a pandas dataframe and print it to output_dataframe_file in .tsv format
+	info_dataframe = pd.DataFrame.from_dict(info_dict)
+	info_dataframe.index.name = 'Sequence'
+	#If VIBRANT was run the results should be indexed and merged to the final seq_info data frame. Do it first for the quality table
+	#Notice that VIBRANT indexes the sequences by ID and Desc and appends _fragment_# to the scaffolds found as lysogens as part of longer contigs. This means that a discrepancy is created between the identifiers in Seq_Info and the VIBRANT tables
+	if ((args.call_vibrant_module == True) and (vibrant_out_quality_file != 'NA')):
+		vibrant_info_data_frame = index_info(vibrant_out_quality_file,'scaffold')
+		lysogen_count = 0
+		for i,row in vibrant_info_data_frame.iterrows():
+			compiled_obj = re.compile('_fragment_(\d)+$')
+			frag_match = re.search(compiled_obj,i)
+			clean_name = i.split(' ')[0]
+			#print('Match:',frag_match)
+			if (frag_match):
+				clean_name = clean_name+frag_match[0]
+				lysogen_count += 1
+				#print('Matched a fragment!',i,frag_match,'Updated Clean Name:',clean_name)
+			vibrant_info_data_frame = vibrant_info_data_frame.rename(index={i:clean_name})
+		vibrant_info_data_frame = vibrant_info_data_frame[vibrant_info_data_frame.Quality != 'complete circular']
+		vibrant_info_data_frame['Is_Virus'] = True
+		#print('Filtered Quality Shape Is',vibrant_info_data_frame.shape,'Unique', vibrant_info_data_frame.index.is_unique)
+		frames = [info_dataframe,vibrant_info_data_frame]
+		info_dataframe = pd.concat(frames,axis=1)
+		if (lysogen_count > 0):
+			print(f'Warning! {lysogen_count} Lysogenic fragments found as part of longer scaffolds. If you are also running the index module there will be additional rows in the Seq Info file to accomodate these fragments.')
+	#Now do the same but with the AMG table
+	if ((args.call_vibrant_module == True) and (vibrant_out_amg_file != 'NA')):
+		vibrant_info_data_frame = index_info(vibrant_out_amg_file,'protein')
+		vibrant_amg_dict = defaultdict(dict)
+		for i,row in vibrant_info_data_frame.iterrows():
+			scaffold = row['scaffold']
+			clean_name = scaffold.split(' ')[0]
+			compiled_obj = re.compile('_fragment_(\d)+$')
+			frag_match = re.search(compiled_obj,scaffold)
+			if (frag_match):
+				clean_name = clean_name+frag_match[0]
+			amg_ko = row['AMG KO']
+			#print(clean_name,amg_ko)
+			if (clean_name not in vibrant_amg_dict['AMG_Count']):
+				vibrant_amg_dict['AMG_Count'][clean_name] = 1
+				vibrant_amg_dict['AMG_List'][clean_name] = [amg_ko]
+			else:
+				vibrant_amg_dict['AMG_Count'][clean_name]+= 1
+				vibrant_amg_dict['AMG_List'][clean_name].append(amg_ko)
+		
+		amg_data_frame = pd.DataFrame.from_dict(vibrant_amg_dict)
+		#print('AMG Shape Is',amg_data_frame.shape,'Unique', amg_data_frame.index.is_unique)
+		frames = [info_dataframe,amg_data_frame]
+		info_dataframe = pd.concat(frames,axis=1)
+		
+	#If checkV was run the results should be indexed and merged to the final seq_info data frame
+	if ((args.call_checkv_module == True) and (checkv_out_summary_file != 'NA')):
+		checkv_info_data_frame = index_info(checkv_out_summary_file,'contig_id')
+		frames = [info_dataframe,checkv_info_data_frame]
+		info_dataframe = pd.concat(frames,axis=1)
 	
+	#If Metabat2 was run the results should be indexed and merged to the final seq_info data frame
+	if ((args.metabat2 == True)  and (metabat_out_file != 'NA')):
+		metabat_info_data_frame = index_info(metabat_out_file,None,header=None)
+		metabat_info_data_frame = metabat_info_data_frame.rename(columns={0: "Contig", 1: "Bin"})
+		metabat_info_data_frame = metabat_info_data_frame.set_index('Contig')
+		#print(metabat_info_data_frame.columns)
+		frames = [info_dataframe,metabat_info_data_frame]
+		info_dataframe = pd.concat(frames,axis=1)
+
+	#If RaFAH was run the results should be indexed and merged to the final seq_info data frame
+	if ((args.call_rafah == True)  and (rafah_out_file != 'NA')):
+		#table_file,index_col_name,sep_var='\t',header='infer'
+		rafah_info_data_frame = index_info(rafah_out_file,'Variable','\t',0)
+		frames = [info_dataframe,rafah_info_data_frame]
+		info_dataframe = pd.concat(frames,axis=1)
+	
+	#If VHMNet was run the results should be indexed and merged to the final seq_info data frame
+	if ((args.call_vhmnet_module == True) and (vhmnet_out_dir != 'NA')):
+		vhmnet_out_pred_files = glob.glob(f'{vhmnet_out_dir}/predictions/*csv')
+		vhmnet_info_dict = defaultdict(dict)
+		for pred_file in vhmnet_out_pred_files:
+			scaffold = re.sub(f"{vhmnet_out_dir}/predictions/","",pred_file)
+			scaffold = re.sub("_prediction.csv","",scaffold)
+			vhmnet_info_data_frame = index_info(pred_file,'hostNCBIName',',')
+			#first_row = vhmnet_info_data_frame.iloc[0,]
+			for column in vhmnet_info_data_frame.columns:	
+				#print(pred_file,scaffold,column,vhmnet_info_data_frame[column][0])
+				if (vhmnet_info_data_frame[column][0] != 'NAmissing'):
+					vhmnet_info_dict[column][scaffold] = vhmnet_info_data_frame[column][0]
+		vhmnet_info_data_frame = pd.DataFrame.from_dict(vhmnet_info_dict)
+		frames = [info_dataframe,vhmnet_info_data_frame]
+		info_dataframe = pd.concat(frames,axis=1)
+		
+	#Print the dataframe with the complete seqinfo to specified file
+	info_dataframe.to_csv(output_dataframe_file,sep="\t",na_rep='NA')
+	
+	#If specified by the user generate plots with the info collected
+	if (args.make_plots_module == True):
+		make_plots(info_dataframe,merged_genomes_file,args.plots_output,og_table_out_file,og_score_table_out_file,args.plots_group_var)
+
+def make_plots(info_dataframe,merged_genomes_file,output_figure_file,og_table_out_file,og_score_table_out_file,group_var):
+	print('Running plotting module')
+	prefix_genome_file = get_prefix(merged_genomes_file,args.in_format)
+	
+	info_dataframe['Group'] = 'All'
+	valid_vars = ['Length','GC','completeness','contamination','CDS_Count','score','hostPhylum','Population','OG_Count','Bin','AMG_Count']
+	axis_count = 0
+	axis_dict = {}
+	for var in valid_vars:
+		if (var in info_dataframe):
+			axis_count+= 1
+			axis_dict[var] = axis_count - 1
+
+		
+	sns.set_theme(font='serif')
+	ideal_width = 4.25*axis_count
+	composite_plot, axes = plt.subplots(nrows=1,ncols=axis_count,figsize=[ideal_width,8])
+
+	#Generate different types of plots according to the data available in seq_info
+	if ('GC' in axis_dict):
+		gc_hist_plot = sns.histplot(ax=axes[axis_dict['GC']],data=info_dataframe,x="GC", bins=20,hue=group_var)
+	if ('Length' in axis_dict):
+		length_hist_plot = sns.histplot(ax=axes[axis_dict['Length']],data=info_dataframe,x="Length", bins=20,hue=group_var)
+	if ('completeness' in axis_dict):
+		comp_hist_plot = sns.histplot(ax=axes[axis_dict['completeness']],data=info_dataframe,x="completeness", bins=20,hue=group_var)
+	if ('contamination' in axis_dict):
+		conta_hist_plot = sns.histplot(ax=axes[axis_dict['contamination']],data=info_dataframe,x="contamination", bins=20,hue=group_var)
+	if ('CDS_Count' in axis_dict):
+		genecount_hist_plot = sns.histplot(ax=axes[axis_dict['CDS_Count']],data=info_dataframe,x="CDS_Count", bins=20,hue=group_var)
+	if ('score' in axis_dict):
+		score_hist_plot = sns.histplot(ax=axes[axis_dict['score']],data=info_dataframe,x="score", bins=20,hue=group_var)
+	if ('OG_Count' in axis_dict):
+		ogcount_hist_plot = sns.histplot(ax=axes[axis_dict['OG_Count']],data=info_dataframe,x="OG_Count", bins=20,hue=group_var)
+	if ('AMG_Count' in axis_dict):
+		ogcount_hist_plot = sns.histplot(ax=axes[axis_dict['AMG_Count']],data=info_dataframe,x="AMG_Count", bins=20,hue=group_var)
+	if ('hostPhylum' in axis_dict):
+		hphy_count_plot = sns.countplot(ax=axes[axis_dict['hostPhylum']],x="hostPhylum", data=info_dataframe)
+		hphy_count_plot.set_xticklabels(hphy_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+	if ('Population' in axis_dict):
+		pop_count_plot = sns.countplot(ax=axes[axis_dict['Population']],x="Population", data=info_dataframe, order=pd.value_counts(info_dataframe['Population']).iloc[:10].index)
+		pop_count_plot.set_xticklabels(pop_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+	if ('Bin' in axis_dict):
+		pop_count_plot = sns.countplot(ax=axes[axis_dict['Bin']],x="Bin", data=info_dataframe, order=pd.value_counts(info_dataframe['Bin']).iloc[:10].index)
+		pop_count_plot.set_xticklabels(pop_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+
+	composite_plot.savefig(output_figure_file)
+	plt.close()
+	
+	if (og_table_out_file != 'NA' ):
+		og_dataframe = index_info(og_table_out_file,'Sequence')
+		filtered_og_dataframe = og_dataframe[og_dataframe.columns[og_dataframe.sum()>3]]
+		(ideal_height,ideal_width) = filtered_og_dataframe.shape
+		figure, ax = plt.subplots(figsize=(ideal_width/20,ideal_height/20)) 
+		og_heatmap_plot = sns.heatmap(filtered_og_dataframe,ax=ax,xticklabels=False,center=1,cmap="viridis") 
+		figure.savefig(f'Heatmap_{prefix_genome_file}_OG_Count.png')
+	
+	if (og_score_table_out_file != 'NA' ):
+		og_score_dataframe = index_info(og_score_table_out_file,'Sequence')
+		filtered_og_score_dataframe = og_score_dataframe
+		(ideal_height,ideal_width) = filtered_og_score_dataframe.shape
+		figure, ax = plt.subplots(figsize=(ideal_width/20,ideal_height/20)) 
+		og_heatmap_plot = sns.heatmap(filtered_og_score_dataframe,ax=ax,xticklabels=False,cmap="viridis") 
+		figure.savefig(f'Heatmap_{prefix_genome_file}_OG_Score.png')
+
+def call_rafah(genome_file,cds_file,min_score):
+	if (not cds_file):
+		print('No cds file identified')
+		(cds_file,gene_file,gff_file) = call_prodigal(genome_file)
+
+	prefix_genome_file = get_prefix(genome_file,args.in_format)
+	prefix_cds_file = get_prefix(cds_file,'(faa)|(fasta)|(fa)')
+	if (args.parse_only == False):
+		print(f'Running RaFAH')
+		command = f'RaFAH_v0.2.pl --predict --merged_cds_file_name {cds_file} --min_cutoff {min_score} --threads {args.threads} --file_prefix RaFAH_{prefix_cds_file}'
+		print(command)
+		subprocess.call(command, shell=True)
+	
+	rafah_out_file = f'RaFAH_{prefix_cds_file}'+'_Seq_Info_Prediction.tsv'
+	return rafah_out_file
+	
+	
+	
+def align_protein_to_hmm(cds_file,db_file,out_file,threads):
+	#Align proteins against the generated hmm 
+	print(f'Querying {cds_file} against {db_file}')
+	command = f'hmmsearch -o {out_file} --noali --cpu {threads} {db_file} {cds_file}'
+	subprocess.call(command, shell=True)				
+	return(1)
+	
+def call_hmmer (cds_file,db_file,program):
+	cds_file_prefix = get_prefix(cds_file,'(faa)|(fasta)|(fa)')
+	db_file_prefix = get_prefix(db_file,'hmm')
+	outfile = 'NA'
+	if (program == 'hmmscan'):
+		outfile = cds_file_prefix+'x'+db_file_prefix+'.hmmscan'
+		if (args.parse_only == False):
+			print(f'Querying {db_file} against {cds_file}')
+			command = f'hmmscan -o {outfile} --noali --cpu {args.threads} {cds_file} {db_file}'
+			subprocess.call(command, shell=True)
+	elif (program == 'hmmsearch'):
+		outfile = cds_file_prefix+'x'+db_file_prefix+'.hmmsearch'
+		if (args.parse_only == False):
+			print(f'Querying {cds_file} against {db_file}')
+			command = f'hmmsearch -o {outfile} --noali --cpu {args.threads} {db_file} {cds_file}'
+			subprocess.call(command, shell=True)	
+	else:
+		print('Not a valid Hmmer program!')
+		
+	return outfile
+
 def calc_pps(genome_file,cds,pps_subject_fasta,pps_subject_db):
 	prefix_genome_file = get_prefix(genome_file,args.in_format)
 	prefix_subject_fasta_file = get_prefix(pps_subject_fasta,'(faa)|(fasta)|(fa)')
@@ -132,7 +355,7 @@ def calc_pps(genome_file,cds,pps_subject_fasta,pps_subject_db):
 		command = f'mmseqs easy-search {cds} {pps_subject_fasta} {outfile} tmp --threads {args.threads} --max-seqs 1000 --min-seq-id 0.3 --min-aln-len 30'
 		subprocess.call(command, shell=True)
 	else:
-		outfile = '{prefix_cds_file}x{prefix_subject_DB_file}.m8'
+		outfile = f'{prefix_cds_file}x{prefix_subject_DB_file}.m8'
 		command = f'mmseqs easy-search {cds} {pps_subject_db} {outfile} tmp --threads {args.threads} --max-seqs 1000 --min-seq-id 0.3 --min-aln-len 30'
 		subprocess.call(command, shell=True)
 	recip_scores = calc_recip_scores(outfile)
@@ -414,164 +637,11 @@ def filter_seqs(genome_file,min_length,max_length):
 			if ((seq_length >= min_length) and (seq_length <= max_length)):
 				SeqIO.write(seqobj, OUT, "fasta")
 
-def print_results(info_dict,og_table_out_file,og_score_table_out_file,vibrant_out_quality_file,vibrant_out_amg_file,checkv_out_summary_file,vhmnet_out_dir,output_dataframe_file,merged_genomes_file,metabat_out_file):
-	#Convert the 2d dictionary info_dict into a pandas dataframe and print it to output_dataframe_file in .tsv format
-	info_dataframe = pd.DataFrame.from_dict(info_dict)
-	info_dataframe.index.name = 'Sequence'
-	#If VIBRANT was run the results should be indexed and merged to the final seq_info data frame. Do it first for the quality table
-	#Notice that VIBRANT indexes the sequences by ID and Desc and appends _fragment_# to the scaffolds found as lysogens as part of longer contigs. This means that a discrepancy is created between the identifiers in Seq_Info and the VIBRANT tables
-	if ((args.call_vibrant_module == True) and (vibrant_out_quality_file != 'NA')):
-		vibrant_info_data_frame = index_info(vibrant_out_quality_file,'scaffold')
-		lysogen_count = 0
-		for i,row in vibrant_info_data_frame.iterrows():
-			compiled_obj = re.compile('_fragment_(\d)+$')
-			frag_match = re.search(compiled_obj,i)
-			clean_name = i.split(' ')[0]
-			#print('Match:',frag_match)
-			if (frag_match):
-				clean_name = clean_name+frag_match[0]
-				lysogen_count += 1
-				#print('Matched a fragment!',i,frag_match,'Updated Clean Name:',clean_name)
-			vibrant_info_data_frame = vibrant_info_data_frame.rename(index={i:clean_name})
-		vibrant_info_data_frame = vibrant_info_data_frame[vibrant_info_data_frame.Quality != 'complete circular']
-		vibrant_info_data_frame['Is_Virus'] = True
-		#print('Filtered Quality Shape Is',vibrant_info_data_frame.shape,'Unique', vibrant_info_data_frame.index.is_unique)
-		frames = [info_dataframe,vibrant_info_data_frame]
-		info_dataframe = pd.concat(frames,axis=1)
-		if (lysogen_count > 0):
-			print(f'Warning! {lysogen_count} Lysogenic fragments found as part of longer scaffolds. If you are also running the index module there will be additional rows in the Seq Info file to accomodate these fragments.')
-	#Now do the same but with the AMG table
-	if ((args.call_vibrant_module == True) and (vibrant_out_amg_file != 'NA')):
-		vibrant_info_data_frame = index_info(vibrant_out_amg_file,'protein')
-		vibrant_amg_dict = defaultdict(dict)
-		for i,row in vibrant_info_data_frame.iterrows():
-			scaffold = row['scaffold']
-			clean_name = scaffold.split(' ')[0]
-			compiled_obj = re.compile('_fragment_(\d)+$')
-			frag_match = re.search(compiled_obj,scaffold)
-			if (frag_match):
-				clean_name = clean_name+frag_match[0]
-			amg_ko = row['AMG KO']
-			#print(clean_name,amg_ko)
-			if (clean_name not in vibrant_amg_dict['AMG_Count']):
-				vibrant_amg_dict['AMG_Count'][clean_name] = 1
-				vibrant_amg_dict['AMG_List'][clean_name] = [amg_ko]
-			else:
-				vibrant_amg_dict['AMG_Count'][clean_name]+= 1
-				vibrant_amg_dict['AMG_List'][clean_name].append(amg_ko)
-		
-		amg_data_frame = pd.DataFrame.from_dict(vibrant_amg_dict)
-		#print('AMG Shape Is',amg_data_frame.shape,'Unique', amg_data_frame.index.is_unique)
-		frames = [info_dataframe,amg_data_frame]
-		info_dataframe = pd.concat(frames,axis=1)
-		
-	#If checkV was run the results should be indexed and merged to the final seq_info data frame
-	if ((args.call_checkv_module == True) and (checkv_out_summary_file != 'NA')):
-		checkv_info_data_frame = index_info(checkv_out_summary_file,'contig_id')
-		frames = [info_dataframe,checkv_info_data_frame]
-		info_dataframe = pd.concat(frames,axis=1)
 	
-	#If Metabat2 was run the results should be indexed and merged to the final seq_info data frame
-	if ((args.metabat2 == True)  and (metabat_out_file != 'NA')):
-		metabat_info_data_frame = index_info(metabat_out_file,None,header=None)
-		metabat_info_data_frame = metabat_info_data_frame.rename(columns={0: "Contig", 1: "Bin"})
-		metabat_info_data_frame = metabat_info_data_frame.set_index('Contig')
-		#print(metabat_info_data_frame.columns)
-		frames = [info_dataframe,metabat_info_data_frame]
-		info_dataframe = pd.concat(frames,axis=1)
-	
-	#If VHMNet was run the results should be indexed and merged to the final seq_info data frame
-	if ((args.call_vhmnet_module == True) and (vhmnet_out_dir != 'NA')):
-		vhmnet_out_pred_files = glob.glob(f'{vhmnet_out_dir}/predictions/*csv')
-		vhmnet_info_dict = defaultdict(dict)
-		for pred_file in vhmnet_out_pred_files:
-			scaffold = re.sub(f"{vhmnet_out_dir}/predictions/","",pred_file)
-			scaffold = re.sub("_prediction.csv","",scaffold)
-			vhmnet_info_data_frame = index_info(pred_file,'hostNCBIName',',')
-			#first_row = vhmnet_info_data_frame.iloc[0,]
-			for column in vhmnet_info_data_frame.columns:	
-				#print(pred_file,scaffold,column,vhmnet_info_data_frame[column][0])
-				if (vhmnet_info_data_frame[column][0] != 'NAmissing'):
-					vhmnet_info_dict[column][scaffold] = vhmnet_info_data_frame[column][0]
-		vhmnet_info_data_frame = pd.DataFrame.from_dict(vhmnet_info_dict)
-		frames = [info_dataframe,vhmnet_info_data_frame]
-		info_dataframe = pd.concat(frames,axis=1)
-		
-	#Print the dataframe with the complete seqinfo to specified file
-	info_dataframe.to_csv(output_dataframe_file,sep="\t",na_rep='NA')
-	
-	#If specified by the user generate plots with the info collected
-	if (args.make_plots_module == True):
-		make_plots(info_dataframe,merged_genomes_file,args.plots_output,og_table_out_file,og_score_table_out_file,args.plots_group_var)
-
-def make_plots(info_dataframe,merged_genomes_file,output_figure_file,og_table_out_file,og_score_table_out_file,group_var):
-	print('Running plotting module')
-	prefix_genome_file = get_prefix(merged_genomes_file,args.in_format)
-	
-	info_dataframe['Group'] = 'All'
-	valid_vars = ['Length','GC','completeness','contamination','CDS_Count','score','hostPhylum','Population','OG_Count','Bin','AMG_Count']
-	axis_count = 0
-	axis_dict = {}
-	for var in valid_vars:
-		if (var in info_dataframe):
-			axis_count+= 1
-			axis_dict[var] = axis_count - 1
-
-		
-	sns.set_theme(font='serif')
-	ideal_width = 4.25*axis_count
-	composite_plot, axes = plt.subplots(nrows=1,ncols=axis_count,figsize=[ideal_width,8])
-
-	#Generate different types of plots according to the data available in seq_info
-	if ('GC' in axis_dict):
-		gc_hist_plot = sns.histplot(ax=axes[axis_dict['GC']],data=info_dataframe,x="GC", bins=20,hue=group_var)
-	if ('Length' in axis_dict):
-		length_hist_plot = sns.histplot(ax=axes[axis_dict['Length']],data=info_dataframe,x="Length", bins=20,hue=group_var)
-	if ('completeness' in axis_dict):
-		comp_hist_plot = sns.histplot(ax=axes[axis_dict['completeness']],data=info_dataframe,x="completeness", bins=20,hue=group_var)
-	if ('contamination' in axis_dict):
-		conta_hist_plot = sns.histplot(ax=axes[axis_dict['contamination']],data=info_dataframe,x="contamination", bins=20,hue=group_var)
-	if ('CDS_Count' in axis_dict):
-		genecount_hist_plot = sns.histplot(ax=axes[axis_dict['CDS_Count']],data=info_dataframe,x="CDS_Count", bins=20,hue=group_var)
-	if ('score' in axis_dict):
-		score_hist_plot = sns.histplot(ax=axes[axis_dict['score']],data=info_dataframe,x="score", bins=20,hue=group_var)
-	if ('OG_Count' in axis_dict):
-		ogcount_hist_plot = sns.histplot(ax=axes[axis_dict['OG_Count']],data=info_dataframe,x="OG_Count", bins=20,hue=group_var)
-	if ('AMG_Count' in axis_dict):
-		ogcount_hist_plot = sns.histplot(ax=axes[axis_dict['AMG_Count']],data=info_dataframe,x="AMG_Count", bins=20,hue=group_var)
-	if ('hostPhylum' in axis_dict):
-		hphy_count_plot = sns.countplot(ax=axes[axis_dict['hostPhylum']],x="hostPhylum", data=info_dataframe)
-		hphy_count_plot.set_xticklabels(hphy_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
-	if ('Population' in axis_dict):
-		pop_count_plot = sns.countplot(ax=axes[axis_dict['Population']],x="Population", data=info_dataframe, order=pd.value_counts(info_dataframe['Population']).iloc[:10].index)
-		pop_count_plot.set_xticklabels(pop_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
-	if ('Bin' in axis_dict):
-		pop_count_plot = sns.countplot(ax=axes[axis_dict['Bin']],x="Bin", data=info_dataframe, order=pd.value_counts(info_dataframe['Bin']).iloc[:10].index)
-		pop_count_plot.set_xticklabels(pop_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
-
-	composite_plot.savefig(output_figure_file)
-	plt.close()
-	
-	if (og_table_out_file != 'NA' ):
-		og_dataframe = index_info(og_table_out_file,'Sequence')
-		filtered_og_dataframe = og_dataframe[og_dataframe.columns[og_dataframe.sum()>3]]
-		(ideal_height,ideal_width) = filtered_og_dataframe.shape
-		figure, ax = plt.subplots(figsize=(ideal_width/20,ideal_height/20)) 
-		og_heatmap_plot = sns.heatmap(filtered_og_dataframe,ax=ax,xticklabels=False,center=1,cmap="viridis") 
-		figure.savefig(f'Heatmap_{prefix_genome_file}_OG_Count.png')
-	
-	if (og_score_table_out_file != 'NA' ):
-		og_score_dataframe = index_info(og_score_table_out_file,'Sequence')
-		filtered_og_score_dataframe = og_score_dataframe
-		(ideal_height,ideal_width) = filtered_og_score_dataframe.shape
-		figure, ax = plt.subplots(figsize=(ideal_width/20,ideal_height/20)) 
-		og_heatmap_plot = sns.heatmap(filtered_og_score_dataframe,ax=ax,xticklabels=False,cmap="viridis") 
-		figure.savefig(f'Heatmap_{prefix_genome_file}_OG_Score.png')
-	
-def get_prefix(genome_file,format):
-	prefix_genome_file = re.sub(f'.{format}','',genome_file)
-	prefix_genome_file = re.sub('(.)+/','',prefix_genome_file)
-	return prefix_genome_file
+def get_prefix(file,format):
+	prefix_file = re.sub(f'.{format}','',file)
+	prefix_file = re.sub('(.)+/','',prefix_file)
+	return prefix_file
 
 def make_og_score_table(genome_file,cds_file,min_cluster_size):
 	print('Running Orthologous Group Score table module')
@@ -703,19 +773,13 @@ def parse_hmmer_output(hmmer_out_file):
 					pairwise_scores['Score'][hsp_count] = hsp.bitscore
 					pairwise_scores['e-value'][hsp_count] = hsp.evalue
 					pairwise_scores['Subject_Description'][hsp_count] = hit.description
+					pairwise_scores['Query_Description'][hsp_count] = qresult.description
 					ori_score = genome_hmm_scores[qresult.id].get(genome,0)
 					if (ori_score < hsp.bitscore):
 						genome_hmm_scores[qresult.id][genome] = hsp.bitscore
 						
 	return(genome_hmm_scores,pairwise_scores)
 	
-def align_protein_to_hmm(cds_file,db_file,out_file,threads):
-	#Align proteins against the generated hmm 
-	print(f'Aligning {cds_file} to {db_file}')
-	command = f'hmmsearch -o {out_file} --noali --cpu {threads} {db_file} {cds_file}'
-	subprocess.call(command, shell=True)				
-	return(1)
-
 def make_og_table(genome_file,cds_file):
 	print('Running Orthologous Group count table module')
 	#check if there is a CDS file. Otherwise run prodigal
