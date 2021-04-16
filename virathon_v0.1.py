@@ -21,6 +21,8 @@ parser.add_argument("--call_checkv_module", help="Flag to run the CheckV module"
 parser.add_argument("--call_vhmnet_module", help="Flag to run the VirHostMatcher-Net module", default=False, type=bool)
 parser.add_argument("--vhmnet_mode_short", help="Flag to run the VirHostMatcher-Net using the --short-contig flag", default=False, type=bool)
 parser.add_argument("--call_rafah", help="Flag to run the RaFAH module for host prediction", default=False, type=bool)
+parser.add_argument("--call_vpf_class", help="Flag to run the VPF-class module for taxonomic assingment and host prediction", default=False, type=bool)
+parser.add_argument("--vpf_class_yaml", help=".yaml file necessary to run vpf_class",  default='/mnt/lustre/bio/users/fcoutinho/VPF_Class_Files/data-index.yaml', type=str)
 parser.add_argument("--rafah_min_score", help="Minimum RaFAH score to consider a prediction as valid", default=0, type=float)
 parser.add_argument("--metabat2", help="Flag to perform sequence binning through Metabat2", default=False, type=bool)
 parser.add_argument("--make_pops_module", help="Flag to run the viral population pipeline", default=False, type=bool)
@@ -36,6 +38,8 @@ parser.add_argument("--call_ogscoretable_module", help="Flag to run the Ortholog
 parser.add_argument("--call_hmmer", help="Flag to query the CDS file against a hmmer database", default=False, type=bool)
 parser.add_argument("--hmmer_db", help="Hmmer DB file prefix", default=False, type=str)
 parser.add_argument("--hmmer_program", help="Hmmer program to run (hmmscan or hmmsearch)", default='hmmsearch', type=str)
+parser.add_argument("--hmmer_min_score", help="Minimum Hmmer score to consider a match as valid", default=50, type=float)
+parser.add_argument("--hmmer_max_evalue", help="Maximum Hmmer -evalue to consider a match as valid", default=0.001, type=float)
 parser.add_argument("--abundance_table", help="Flag to run the abundance calculation modules", default=False, type=bool)
 parser.add_argument("--abundance_rpkm", help="Flag to calculate abundance as RPKM", default=False, type=bool)
 parser.add_argument("--metagenomes_dir", help="Directory containing metagenome fastq files to be used for abundance calculation", type=str)
@@ -109,7 +113,7 @@ def central():
 	#If specificed by the user (args.hmmer == True) run the hmmer module
 	if (args.call_hmmer == True):
 		hmmer_search_outfile = call_hmmer(args.cds,args.hmmer_db,args.hmmer_program)
-		(genome_hmm_scores,pairwise_scores) = parse_hmmer_output(hmmer_search_outfile)
+		(genome_hmm_scores,pairwise_scores) = parse_hmmer_output(hmmer_search_outfile,args.hmmer_max_evalue,args.hmmer_min_score)
 		#Print pairwise_scores to og_score_table_out_file
 		pairwise_score_table_out_file = 'OG_Pairwise_Score_Table_'+hmmer_search_outfile+'.tsv'
 		pairwise_score_table_data_frame = pd.DataFrame.from_dict(pairwise_scores)
@@ -133,6 +137,8 @@ def central():
 		abundance_out_file = calc_abundance(merged_genomes_file,'NA',args.metagenomes_dir,args.metagenomes_extension)
 	if (args.pairwise_protein_scores == True):
 		calc_pps(merged_genomes_file,args.cds,args.pps_subject_fasta,args.pps_subject_db)
+	if (args.call_vpf_class == True):
+		vpf_class_outfile = call_vpf_class(merged_genomes_file,args.vpf_class_yaml)
 	#Always print the results collected in seq_info
 	print_results(seq_info,og_table_out_file,og_score_table_out_file,vibrant_out_quality_file,vibrant_out_amg_file,checkv_out_summary_file,vhmnet_out_dir,args.info_output,merged_genomes_file,metabat_out_file,rafah_out_file)
 
@@ -238,7 +244,7 @@ def make_plots(info_dataframe,merged_genomes_file,output_figure_file,og_table_ou
 	prefix_genome_file = get_prefix(merged_genomes_file,args.in_format)
 	
 	info_dataframe['Group'] = 'All'
-	valid_vars = ['Length','GC','completeness','contamination','CDS_Count','score','hostPhylum','Population','OG_Count','Bin','AMG_Count']
+	valid_vars = ['Length','GC','completeness','contamination','CDS_Count','score','hostPhylum','Population','OG_Count','Bin','AMG_Count','Predicted_Host','VPF_baltimore','VPF_family','VPF_genus','VPF_host_domain','VPF_host_family','VPF_host_genus']
 	axis_count = 0
 	axis_dict = {}
 	for var in valid_vars:
@@ -271,6 +277,27 @@ def make_plots(info_dataframe,merged_genomes_file,output_figure_file,og_table_ou
 	if ('hostPhylum' in axis_dict):
 		hphy_count_plot = sns.countplot(ax=axes[axis_dict['hostPhylum']],x="hostPhylum", data=info_dataframe)
 		hphy_count_plot.set_xticklabels(hphy_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+	if ('Predicted_Host' in axis_dict):
+		rafah_count_plot = sns.countplot(ax=axes[axis_dict['Predicted_Host']],x="Predicted_Host", data=info_dataframe, order=pd.value_counts(info_dataframe['Predicted_Host']).iloc[:10].index)
+		rafah_count_plot.set_xticklabels(rafah_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+	if ('VPF_baltimore' in axis_dict):
+		rafah_count_plot = sns.countplot(ax=axes[axis_dict['VPF_baltimore']],x="VPF_baltimore", data=info_dataframe, order=pd.value_counts(info_dataframe['VPF_baltimore']).iloc[:10].index)
+		rafah_count_plot.set_xticklabels(rafah_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+	if ('VPF_family' in axis_dict):
+		rafah_count_plot = sns.countplot(ax=axes[axis_dict['VPF_family']],x="VPF_family", data=info_dataframe, order=pd.value_counts(info_dataframe['VPF_family']).iloc[:10].index)
+		rafah_count_plot.set_xticklabels(rafah_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+	if ('VPF_genus' in axis_dict):
+		rafah_count_plot = sns.countplot(ax=axes[axis_dict['VPF_genus']],x="VPF_genus", data=info_dataframe, order=pd.value_counts(info_dataframe['VPF_genus']).iloc[:10].index)
+		rafah_count_plot.set_xticklabels(rafah_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+	if ('VPF_host_domain' in axis_dict):
+		rafah_count_plot = sns.countplot(ax=axes[axis_dict['VPF_host_domain']],x="VPF_host_domain", data=info_dataframe, order=pd.value_counts(info_dataframe['VPF_host_domain']).iloc[:10].index)
+		rafah_count_plot.set_xticklabels(rafah_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+	if ('VPF_host_family' in axis_dict):
+		rafah_count_plot = sns.countplot(ax=axes[axis_dict['VPF_host_family']],x="VPF_host_family", data=info_dataframe, order=pd.value_counts(info_dataframe['VPF_host_family']).iloc[:10].index)
+		rafah_count_plot.set_xticklabels(rafah_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
+	if ('VPF_host_genus' in axis_dict):
+		rafah_count_plot = sns.countplot(ax=axes[axis_dict['VPF_host_genus']],x="VPF_host_genus", data=info_dataframe, order=pd.value_counts(info_dataframe['VPF_host_genus']).iloc[:10].index)
+		rafah_count_plot.set_xticklabels(rafah_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
 	if ('Population' in axis_dict):
 		pop_count_plot = sns.countplot(ax=axes[axis_dict['Population']],x="Population", data=info_dataframe, order=pd.value_counts(info_dataframe['Population']).iloc[:10].index)
 		pop_count_plot.set_xticklabels(pop_count_plot.get_xticklabels(), rotation=30, horizontalalignment='right')
@@ -297,6 +324,38 @@ def make_plots(info_dataframe,merged_genomes_file,output_figure_file,og_table_ou
 		og_heatmap_plot = sns.heatmap(filtered_og_score_dataframe,ax=ax,xticklabels=False,cmap="viridis") 
 		figure.savefig(f'Heatmap_{prefix_genome_file}_OG_Score.png')
 
+def call_vpf_class(genome_file,yaml_file):
+	prefix_genome_file = get_prefix(genome_file,args.in_format)
+	if (args.parse_only == False):
+		print('Running vpf-class')
+		command = f'vpf-class --data-index {yaml_file} --input-seqs {genome_file} -o VPF_Class_{prefix_genome_file} --chunk-size 1000'
+		subprocess.call(command, shell=True)
+	
+	vpf_outfiles = glob.glob(f'VPF_Class_{prefix_genome_file}/*tsv')
+	for file in vpf_outfiles:
+		var = file
+		var = re.sub(f'VPF_Class_{prefix_genome_file}/','',var)
+		var = re.sub('.tsv','',var)
+		print ('Processing',file,var)
+		vpfclass_info_data_frame = index_info(file,'virus_name','\t',0)
+		for scaffold,row in vpfclass_info_data_frame.iterrows():
+			mem_ratio = row['membership_ratio']
+			vh_score = row['virus_hit_score']
+			conf_score = row['confidence_score']
+			taxon = row['class_name']
+			if (scaffold not in seq_info['VPF_'+var]):
+				seq_info['VPF_'+var][scaffold] = taxon
+				seq_info['VPF_Membership_Ratio_'+var][scaffold] = mem_ratio
+				seq_info['VPF_Confidende_Score_'+var][scaffold] = conf_score
+				seq_info['VPF_Virus_Hit_Score_'+var][scaffold] = vh_score
+			elif (seq_info['VPF_Membership_Ratio_'+var][scaffold] < mem_ratio):
+				seq_info['VPF_'+var][scaffold] = taxon
+				seq_info['VPF_Membership_Ratio_'+var][scaffold] = mem_ratio
+				seq_info['VPF_Confidende_Score_'+var][scaffold] = conf_score
+				seq_info['VPF_Virus_Hit_Score_'+var][scaffold] = vh_score
+				
+	return 0
+
 def call_rafah(genome_file,cds_file,min_score):
 	if (not cds_file):
 		print('No cds file identified')
@@ -312,8 +371,7 @@ def call_rafah(genome_file,cds_file,min_score):
 	
 	rafah_out_file = f'RaFAH_{prefix_cds_file}'+'_Seq_Info_Prediction.tsv'
 	return rafah_out_file
-	
-	
+		
 	
 def align_protein_to_hmm(cds_file,db_file,out_file,threads):
 	#Align proteins against the generated hmm 
@@ -749,7 +807,7 @@ def parse_mmseqs_cluster_file(out_mmseqs_cluster_file):
 	
 	return(og_table,protein_info,cluster_info)
 
-def parse_hmmer_output(hmmer_out_file):
+def parse_hmmer_output(hmmer_out_file,max_evalue=0.001,min_score=50):
 	genome_hmm_scores = defaultdict(dict)
 	pairwise_scores = defaultdict(dict)
 	hsp_count = 0
@@ -764,7 +822,7 @@ def parse_hmmer_output(hmmer_out_file):
 				genome = hit.id
 				genome = re.sub('_(\d)+$','',genome)
 				#print(qresult.id,genome,hit.id)
-				is_valid = check_hmmer_match_cutoff(hsp,0.001,50)
+				is_valid = check_hmmer_match_cutoff(hsp,max_evalue,min_score)
 				if is_valid:
 					hsp_count += 1
 					pairwise_scores['Genome'][hsp_count] = genome
