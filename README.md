@@ -21,10 +21,17 @@ Virathon is writen in Python 3 and uses multiple external depencies.
 - [SPAdes](https://github.com/ablab/spades)
 - [VIBRANT](https://github.com/AnantharamanLab/VIBRANT)
 - [VirHostMatcher-Net](https://github.com/WeiliWw/VirHostMatcher-Net)
+- [vpf-class](https://github.com/biocom-uib/vpf-tools)
 
 ***
 
 ## Commands
+### Running host prediction and taxonomic assignment with vpf-class:
+`python3 virathon_v0.1.py --genome_files My_Genomes.fasta --call_vpf_class True`
+
+This will generate the following files:
+-  VPF_Class_My_Genomes directory containing: baltimore.tsv  family.tsv  genus.tsv  host_domain.tsv  host_family.tsv  host_genus.tsv
+
 ### Running host predictions with RaFAH starting from a genomes fasta file:
 `python3 virathon_v0.1.py --call_rafah True --genome My_Genomes.fasta`
 
