@@ -16,6 +16,7 @@ import gzip
 parser = argparse.ArgumentParser()
 parser.add_argument("--index_module", help="Flag to run the Indexing module to generate the Seq Info table with the information derived from all the tools that were run", default=False, type=bool)
 parser.add_argument("--call_prodigal_module", help="Flag to run the gene calling module", default=False, type=bool)
+parser.add_argument("--bacphlip", help="Flag to run the Bacphlip", default=False, type=bool)
 parser.add_argument("--call_vibrant_module", help="Flag to run the VIBRANT module", default=False, type=bool)
 parser.add_argument("--call_checkv_module", help="Flag to run the CheckV module", default=False, type=bool)
 parser.add_argument("--call_vhmnet_module", help="Flag to run the VirHostMatcher-Net module", default=False, type=bool)
@@ -42,7 +43,8 @@ parser.add_argument("--hmmer_min_score", help="Minimum Hmmer score to consider a
 parser.add_argument("--hmmer_max_evalue", help="Maximum Hmmer -evalue to consider a match as valid", default=0.001, type=float)
 parser.add_argument("--abundance_table", help="Flag to run the abundance calculation modules", default=False, type=bool)
 parser.add_argument("--abundance_rpkm", help="Flag to calculate abundance as RPKM", default=False, type=bool)
-parser.add_argument("--metagenomes_dir", help="Directory containing metagenome fastq files to be used for abundance calculation", type=str)
+parser.add_argument("--bowtiedb", help="Prefix of Bowtie DB to use for abundance calculations instead of building from the genomes file", default='NA', type=str)
+parser.add_argument("--metagenomes_dir", help="Directories containing metagenome fastq files to be used for abundance calculation",  nargs="+", type=str)
 parser.add_argument("--metagenomes_extension", help="Extension of the fastq files in metagenomes_dir to be used for abundance calculation", default="fastq", type=str)
 parser.add_argument("--assemble", help="Flag to run the assembly module", default=False, type=bool)
 parser.add_argument("--samples_dir", help="Directory containing fastq files to be used for assembly", type=str)
@@ -93,7 +95,11 @@ def central():
 	#Cluster sequences into viral populations if specified by the user
 	vpop_out_file = 'NA'
 	if (args.make_pops_module):
-		vpop_out_file = make_pops(merged_genomes_file,args.gene) 
+		vpop_out_file = make_pops(merged_genomes_file,args.gene)
+	#If specified by the user perform virus prediction with VIBRANT and Index the results
+	bacphlip_out_file = 'NA'
+	if (args.bacphlip == True):
+		(bacphlip_out_file) = call_bacphlip(merged_genomes_file)
 	#If specified by the user perform virus prediction with VIBRANT and Index the results
 	vibrant_out_quality_file = 'NA'
 	vibrant_out_amg_file = 'NA'
@@ -134,7 +140,7 @@ def central():
 		#If specified by the user perform binning  through Metabat2 and Index the results
 	abundance_out_file = 'NA'
 	if (args.abundance_table == True):
-		abundance_out_file = calc_abundance(merged_genomes_file,'NA',args.metagenomes_dir,args.metagenomes_extension)
+		abundance_out_file = calc_abundance(merged_genomes_file,args.bowtiedb,args.metagenomes_dir,args.metagenomes_extension)
 	if (args.pairwise_protein_scores == True):
 		calc_pps(merged_genomes_file,args.cds,args.pps_subject_fasta,args.pps_subject_db)
 	if (args.call_vpf_class == True):
@@ -324,6 +330,27 @@ def make_plots(info_dataframe,merged_genomes_file,output_figure_file,og_table_ou
 		og_heatmap_plot = sns.heatmap(filtered_og_score_dataframe,ax=ax,xticklabels=False,cmap="viridis") 
 		figure.savefig(f'Heatmap_{prefix_genome_file}_OG_Score.png')
 
+def call_bacphlip(genome_file):
+	prefix_genome_file = get_prefix(genome_file,args.in_format)
+	if (args.parse_only == False):
+		print('Running Bacphlip')
+		command = f'bacphlip -i {genome_file} --multi_fasta'
+		subprocess.call(command, shell=True)
+	
+	bacphlip_out_file = genome_file + '.bacphlip'
+	bacphlip_df = index_info(bacphlip_out_file,0,'\t',0)
+	#print(bacphlip_df.columns)
+	bacphlip_df = bacphlip_df.rename(columns={"Virulent" : "Lytic_Score", "Temperate": "Temperate_Score"})
+	#print(bacphlip_df.columns)
+	#bacphlip_df = bacphlip_df.set_index('Scaffold')
+	for scaffold,row in bacphlip_df.iterrows():
+		seq_info["Bacphlip_Lytic_Score"][scaffold] = row["Lytic_Score"]
+		seq_info["Bacphlip_Temperate_Score"][scaffold] = row["Temperate_Score"]
+		if (row["Lytic_Score"] >= row["Temperate_Score"]):
+			seq_info["Bacphlip_Classification"][scaffold] = "Lytic"
+		elif (row["Lytic_Score"] < row["Temperate_Score"]):
+			seq_info["Bacphlip_Classification"][scaffold] = "Lysogenic"
+		
 def call_vpf_class(genome_file,yaml_file):
 	prefix_genome_file = get_prefix(genome_file,args.in_format)
 	if (args.parse_only == False):
@@ -437,7 +464,7 @@ def calc_recip_scores(infile):
 	#Initialize 2D dictionary that will hold the reciprocal scores
 	recip_scores = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
 	#Parse the m8 file
-	print ('Parsing BLASTN output',infile)
+	print ('Parsing m8 output',infile)
 	#Seen hits will keep track of the seen CDS pairs so to not overestimate AAI and Perc matched genes
 	seen_hits = defaultdict(dict)
 	#Iterare over queries
@@ -546,17 +573,21 @@ def calc_abundance(genome_file,db_file,metagenomes_dir,metagenomes_extension):
 	prefix_genome_file = get_prefix(genome_file,args.in_format)
 	raw_abund_matrix = pd.DataFrame()
 	
+	db_file_prefix = 'NA'
 	if (db_file == 'NA'):
 		print(f'Building Bowtie2 database from {genome_file}')
 		command = f'bowtie2-build {genome_file} {prefix_genome_file}'
 		db_file = prefix_genome_file
+		db_file_prefix = prefix_genome_file
 		subprocess.call(command, shell=True)
-		
+	else:
+		db_file_prefix = get_prefix(db_file,"DUMMY")
+	
 	samples_index = index_samples(metagenomes_dir,metagenomes_extension,True)
 	
 	for sample in samples_index.keys():
 		print(f'Aligning reads of {sample}')
-		outfile = sample+'x'+db_file
+		outfile = sample+'x'+db_file_prefix
 		if (samples_index[sample]['Is_Paired'] == True):
 			r1_file = samples_index[sample]['R1']
 			r2_file = samples_index[sample]['R2']
@@ -630,51 +661,52 @@ def index_reads(reads_file,format):
 		
 def index_samples(metagenomes_dir,metagenomes_extension,count_reads):
 	samples_index = defaultdict(dict)
-	files = glob.glob(f'{metagenomes_dir}/*{metagenomes_extension}')
-	first_id = files[0]
-	first_id = re.sub('(.)+/','',first_id)
-	match = re.search(f'_(.)*(1|2)',first_id)
-	suffix = match.group()
-	suffix = re.sub('(1|2)$','',suffix)
-	print(f'File suffix inferred from {files[0]}: ',suffix)
-	
-	for file in files:
-		id = file
-		if (re.search(f'{suffix}1(\.)+{metagenomes_extension}$',id)):
-			pair = id
-			id = re.sub('(.)+/','',id)
-			id = re.sub(f'{suffix}*1','',id)
-			id = re.sub(f'(\.)+{metagenomes_extension}','',id)
-			pair = re.sub(f'{suffix}1',f'{suffix}2',pair)
-			samples_index[id]['R1'] =  file
-			if (count_reads == True):
-				(samples_index[id]['R1_Read_Count'],samples_index[id]['R1_bp_Count']) = index_reads(file,'fastq')
-			if (pair in files):
-				samples_index[id]['Is_Paired'] = True
+	for dir in metagenomes_dir:
+		files = glob.glob(f'{dir}/*{metagenomes_extension}')
+		first_id = files[0]
+		first_id = re.sub('(.)+/','',first_id)
+		match = re.search(f'_(.)*(1|2)',first_id)
+		suffix = match.group()
+		suffix = re.sub('(1|2)$','',suffix)
+		print(f'File suffix inferred from {files[0]}: ',suffix)
+		
+		for file in files:
+			id = file
+			if (re.search(f'{suffix}1(\.)+{metagenomes_extension}$',id)):
+				pair = id
+				id = re.sub('(.)+/','',id)
+				id = re.sub(f'{suffix}*1','',id)
+				id = re.sub(f'(\.)+{metagenomes_extension}','',id)
+				pair = re.sub(f'{suffix}1',f'{suffix}2',pair)
+				samples_index[id]['R1'] =  file
+				if (count_reads == True):
+					(samples_index[id]['R1_Read_Count'],samples_index[id]['R1_bp_Count']) = index_reads(file,'fastq')
+				if (pair in files):
+					samples_index[id]['Is_Paired'] = True
+				else:
+					samples_index[id]['Is_Paired'] = False
+				print('R1',id,file,pair,'Is Paired = ',samples_index[id]['Is_Paired'])
+			elif (re.search(f'{suffix}2(\.)+{metagenomes_extension}$',id)):
+				pair = id
+				id = re.sub('(.)+/','',id)
+				id = re.sub(f'{suffix}*2','',id)
+				id = re.sub(f'(\.)+{metagenomes_extension}','',id)
+				pair = re.sub(f'{suffix}2',f'{suffix}1',pair)
+				samples_index[id]['R2'] =  file
+				if (count_reads == True):
+					(samples_index[id]['R2_Read_Count'],samples_index[id]['R2_bp_Count']) = index_reads(file,'fastq')
+				if (pair in files):
+					samples_index[id]['Is_Paired'] = True
+				else:
+					samples_index[id]['Is_Paired'] = False
+				print('R2',id,file,pair,'Is Paired = ',samples_index[id]['Is_Paired'])
 			else:
+				id = re.sub(f'(\.)+{metagenomes_extension}','',id)
+				print('Unpaired',id,file)
+				samples_index[id]['R1'] =  file
 				samples_index[id]['Is_Paired'] = False
-			print('R1',id,file,pair,'Is Paired = ',samples_index[id]['Is_Paired'])
-		elif (re.search(f'{suffix}2(\.)+{metagenomes_extension}$',id)):
-			pair = id
-			id = re.sub('(.)+/','',id)
-			id = re.sub(f'{suffix}*2','',id)
-			id = re.sub(f'(\.)+{metagenomes_extension}','',id)
-			pair = re.sub(f'{suffix}2',f'{suffix}1',pair)
-			samples_index[id]['R2'] =  file
-			if (count_reads == True):
-				(samples_index[id]['R2_Read_Count'],samples_index[id]['R2_bp_Count']) = index_reads(file,'fastq')
-			if (pair in files):
-				samples_index[id]['Is_Paired'] = True
-			else:
-				samples_index[id]['Is_Paired'] = False
-			print('R2',id,file,pair,'Is Paired = ',samples_index[id]['Is_Paired'])
-		else:
-			id = re.sub(f'(\.)+{metagenomes_extension}','',id)
-			print('Unpaired',id,file)
-			samples_index[id]['R1'] =  file
-			samples_index[id]['Is_Paired'] = False
-			if (count_reads == True):
-				(samples_index[id]['R1_Read_Count'],samples_index[id]['R1_bp_Count']) = index_reads(file,'fastq')
+				if (count_reads == True):
+					(samples_index[id]['R1_Read_Count'],samples_index[id]['R1_bp_Count']) = index_reads(file,'fastq')
 				
 	return(samples_index)
 			
