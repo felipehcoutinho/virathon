@@ -157,8 +157,8 @@ def print_results(info_dict,og_table_out_file,og_score_table_out_file,vibrant_ou
     if ((args.call_vibrant_module == True) and (vibrant_out_quality_file != 'NA')):
         vibrant_info_data_frame = index_info(vibrant_out_quality_file,'scaffold')
         lysogen_count = 0
+        compiled_obj = re.compile('_fragment_(\d)+$')
         for i,row in vibrant_info_data_frame.iterrows():
-            compiled_obj = re.compile('_fragment_(\d)+$')
             frag_match = re.search(compiled_obj,i)
             clean_name = i.split(' ')[0]
             #print('Match:',frag_match)
@@ -178,10 +178,10 @@ def print_results(info_dict,og_table_out_file,og_score_table_out_file,vibrant_ou
     if ((args.call_vibrant_module == True) and (vibrant_out_amg_file != 'NA')):
         vibrant_info_data_frame = index_info(vibrant_out_amg_file,'protein')
         vibrant_amg_dict = defaultdict(dict)
+        compiled_obj = re.compile('_fragment_(\d)+$')
         for i,row in vibrant_info_data_frame.iterrows():
             scaffold = row['scaffold']
             clean_name = scaffold.split(' ')[0]
-            compiled_obj = re.compile('_fragment_(\d)+$')
             frag_match = re.search(compiled_obj,scaffold)
             if (frag_match):
                 clean_name = clean_name+frag_match[0]
@@ -229,7 +229,7 @@ def print_results(info_dict,og_table_out_file,og_score_table_out_file,vibrant_ou
             scaffold = re.sub("(.)*/predictions/","",pred_file)
             scaffold = re.sub("_prediction.csv","",scaffold)
             vhmnet_info_data_frame = index_info(pred_file,'hostNCBIName',',',header=0)
-            print(pred_file,scaffold)
+            #print(pred_file,scaffold)
             for column in vhmnet_info_data_frame.columns:    
                 #print(pred_file,scaffold,column,vhmnet_info_data_frame[column][0])
                 if (vhmnet_info_data_frame[column][0] != 'NAmissing'):
@@ -239,6 +239,7 @@ def print_results(info_dict,og_table_out_file,og_score_table_out_file,vibrant_ou
         info_dataframe = pd.concat(frames,axis=1)
         
     #Print the dataframe with the complete seqinfo to specified file
+    info_dataframe.index.name = 'Sequence'
     info_dataframe.to_csv(output_dataframe_file,sep="\t",na_rep='NA')
     
     #If specified by the user generate plots with the info collected
