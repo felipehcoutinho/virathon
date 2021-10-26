@@ -258,7 +258,7 @@ def make_plots(info_dataframe,merged_genomes_file,output_figure_file,og_table_ou
     prefix_genome_file = get_prefix(merged_genomes_file,args.in_format)
     
     info_dataframe['Group'] = 'All'
-    valid_vars = ['Length','GC','completeness','contamination','CDS_Count','score','hostPhylum','Population','OG_Count','Bin','AMG_Count','Predicted_Host','VPF_baltimore','VPF_family','VPF_genus','VPF_host_domain','VPF_host_family','VPF_host_genus']
+    valid_vars = ['Length','GC','completeness','contamination','CDS_Count','score','hostPhylum','Population','OG_Count','Bin','AMG_Count','Predicted_Host','VPF_baltimore','VPF_family','VPF_genus']#,'VPF_host_domain','VPF_host_family','VPF_host_genus'
     axis_count = 0
     axis_dict = {}
     for var in valid_vars:
@@ -613,11 +613,8 @@ def calc_abundance(genome_file,db_file,metagenomes_dir,metagenomes_extension,max
     else:
         db_file_prefix = get_prefix(db_file,"DUMMY")
     
-    samples_index = dict()
-    if(args.abundance_rpkm):
-        samples_index = index_samples(metagenomes_dir,metagenomes_extension,True)
-    else:
-        samples_index = index_samples(metagenomes_dir,metagenomes_extension,False)
+
+    samples_index = index_samples(metagenomes_dir,metagenomes_extension,False)
 
     sample_index_dataframe = pd.DataFrame.from_dict(samples_index)
     sample_index_dataframe = sample_index_dataframe.transpose()
@@ -632,25 +629,28 @@ def calc_abundance(genome_file,db_file,metagenomes_dir,metagenomes_extension,max
             command = f"bowtie2 -x {db_file} -q -1 {r1_file} -2 {r2_file} -S {outfile}.sam --sensitive-local --no-unal --threads {args.threads}"
             if (max_reads > 0):
                 command = command + f" -u {max_reads}"
-            print(f"Running: {command}")
-            subprocess.call(command, shell=True)
+            if (args.parse_only == False):
+                print(f"Running: {command}")
+                subprocess.call(command, shell=True)
         else:
             r1_file = samples_index[sample]['R1']
             command = f"bowtie2 -x {db_file} -q -U {r1_file} -S {outfile}.sam  --sensitive-local --no-unal --threads {args.threads}"
             if (max_reads > 0):
                 command = command + f" -u {max_reads}"
-            print(f"Running: {command}")
+            if (args.parse_only == False):
+                print(f"Running: {command}")
+                subprocess.call(command, shell=True)
+        if (args.parse_only == False):
+            command = f'samtools view -bS {outfile}.sam > {outfile}.bam'
             subprocess.call(command, shell=True)
-        command = f'samtools view -bS {outfile}.sam > {outfile}.bam'
-        subprocess.call(command, shell=True)
-        command = f'samtools sort {outfile}.bam -o {outfile}.sorted.bam'
-        subprocess.call(command, shell=True)
-        command = f'rm -f {outfile}.sam {outfile}.bam'
-        subprocess.call(command, shell=True)
-        command = f'samtools index {outfile}.sorted.bam'
-        subprocess.call(command, shell=True)
-        command = f'samtools idxstats {outfile}.sorted.bam > {outfile}.Counts.tsv'
-        subprocess.call(command, shell=True)
+            command = f'samtools sort {outfile}.bam -o {outfile}.sorted.bam'
+            subprocess.call(command, shell=True)
+            command = f'rm -f {outfile}.sam {outfile}.bam'
+            subprocess.call(command, shell=True)
+            command = f'samtools index {outfile}.sorted.bam'
+            subprocess.call(command, shell=True)
+            command = f'samtools idxstats {outfile}.sorted.bam > {outfile}.Counts.tsv'
+            subprocess.call(command, shell=True)
         sample_abund = index_info(f'{outfile}.Counts.tsv',None,'\t',header=None)
         sample_abund = sample_abund.rename(columns={0: "Sequence", 1: "Length",2: sample, 3: "Unmapped"})
         sample_abund = sample_abund.set_index('Sequence')
@@ -664,13 +664,17 @@ def calc_abundance(genome_file,db_file,metagenomes_dir,metagenomes_extension,max
     
     if (args.abundance_rpkm == True):
         #Calc perc abundance
+        print("Calculating percentage abundance")
         perc_abund_matrix_file = 'Percentage_Abundance_'+f'{prefix_genome_file}.tsv'
-        perc_abund_matrix = (raw_abund_matrix / sample_index_dataframe['R1_Read_Count']) * 100
+        #perc_abund_matrix = (raw_abund_matrix / raw_abund_matrix.sum(axis=1)) * 100
+        perc_abund_matrix = (raw_abund_matrix.div(raw_abund_matrix.sum(axis=0),axis=1)) * 100
         perc_abund_matrix.to_csv(perc_abund_matrix_file,sep="\t",na_rep='NA')
+        #Calc RPKM
+        print("Calculating RPKM abundance")
         seq_info_matrix = pd.DataFrame.from_dict(seq_info)
         rpkm_abund_matrix_file = 'RPKM_Abundance_'+f'{prefix_genome_file}.tsv'
-        #Calc RPKM
-        rpkm_abund_matrix = (raw_abund_matrix.div((seq_info_matrix['Length'] / 1000),axis=0)  / (sample_index_dataframe['R1_Read_Count'] / 1000000))
+        #rpkm_abund_matrix = (raw_abund_matrix.div((seq_info_matrix['Length'] / 1000),axis=0)  / (sample_index_dataframe['R1_Read_Count'] / 1000000))
+        rpkm_abund_matrix = (raw_abund_matrix.div((seq_info_matrix['Length'] / 1000),axis=0)  / (raw_abund_matrix.sum(axis=0) / 1000000))
         rpkm_abund_matrix.to_csv(rpkm_abund_matrix_file,sep="\t",na_rep='NA')
     
 def index_reads(reads_file,file_format):
