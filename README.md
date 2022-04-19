@@ -26,6 +26,20 @@ Virathon is writen in Python 3 and uses multiple external depencies.
 ***
 
 ## Commands
+
+###	Generating an Orthologous Group (OG) count x Genome table starting from a fasta file of genomic sequences
+`python3 virathon_v0.1.py --genome_files My_Genomes.fasta --call_ogtable_module True`
+This will generate the following files:
+-  OG_Count_Table_My_Genomes.tsv in which rows represent genomic sequences, columns represent orthologous groups, and cells are filled with the count of proteins derived from each genomic sequence in each orthologous group
+
+###	Generating an Orthologous Group (OG) phylogenies starting from a fasta file of genomic sequences and using only OGs with at least 5 proteins
+`python3 virathon_v0.1.py --genome_files My_Genomes.fasta --og_phylogeny True --min_cluster_size 5`
+This will generate the following files:
+-  OG_Count_Table_My_Genomes.tsv in which rows represent genomic sequences, columns represent orthologous groups, and cells are filled with the count of proteins derived from each genomic sequence in each orthologous group
+-  Unaligned_Clusters_My_Genomes directory containing multiple fasta files, each containing the unaligned sequences according to their OG assignment, provided that the OG has at least 5 proteins
+-  Aligned_Clusters_My_Genomes directory containing multiple fasta files, each containing the aligned (using Muscle) sequences from each OG, provided that the OG has at least 5 proteins
+-  Phylogenies_Aligned_Clusters_My_Genomes directory containing multiple fasta files, each containing the aligned (using Muscle) sequences from each OG, provided that the OG has at least 5 proteins 
+
 ### Calculating abundances by read mapping staring from a fasta file of genomic sequences
 `python3 virathon_v0.1.py --genome_files My_Genomes.fasta --abundance_table True --abundance_rpkm True --metagenomes_extension .fastq --metagenomes_dir Dir_1/ Dir_2/ Dir3/ ...`
 
