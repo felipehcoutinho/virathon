@@ -62,6 +62,7 @@ parser.add_argument("--bowtiedb", help="Prefix of Bowtie DB to use for abundance
 parser.add_argument("--bowtie_mode", help="Alignment mode to run bowtie", default='sensitive-local', type=str)
 parser.add_argument("--metagenomes_dir", help="Directories containing metagenome fastq files to be used for abundance calculation",  nargs="+", type=str)
 parser.add_argument("--metagenomes_extension", help="Extension of the fastq files in metagenomes_dir to be used for abundance calculation", default="fastq", type=str)
+parser.add_argument("--raw_read_table", help=".tsv file specifying the Sample ID, R1 Reads file, R2 Reads File, and Sample Group", type=str)
 parser.add_argument("--assemble", help="Flag to run the assembly module", default=False, type=bool)
 parser.add_argument("--samples_dir", help="Directory containing fastq files to be used for assembly",  nargs="+",type=str)
 parser.add_argument("--samples_extension", help="Extension of the fastq files in samples_dir", default='fastq', type=str)
@@ -150,7 +151,7 @@ def central():
         #If specified by the user perform binning  through Metabat2 and Index the results
     abundance_out_file = 'NA'
     if (args.abundance_table == True):
-        abundance_out_file = calc_abundance(merged_genomes_file,args.bowtiedb,args.metagenomes_dir,args.metagenomes_extension,args.abundance_max_reads,args.bowtie_mode,args.abundance_min_count)
+        abundance_out_file = calc_abundance(merged_genomes_file,args.bowtiedb,args.metagenomes_dir,args.metagenomes_extension,args.abundance_max_reads,args.bowtie_mode,args.abundance_min_count,args.raw_read_table)
     if (args.pairwise_protein_scores == True):
         calc_pps(merged_genomes_file,args.cds,args.pps_subject_fasta,args.pps_subject_db,args.pps_hits_table)
     if (args.call_vpf_class == True):
@@ -606,7 +607,77 @@ def call_spades(samples_dir,samples_extension):
     filter_seqs('Merged_Scaffolds.fasta',1000,999999999)
     return('Filtered_Merged_Scaffolds.fasta')
 
-def calc_abundance(genome_file,db_file,metagenomes_dir,metagenomes_extension,max_reads,bowtie_mode,min_count):
+def calc_abundance(genome_file,db_file,metagenomes_dir,metagenomes_extension,max_reads,bowtie_mode,min_count,raw_read_table):
+    prefix_genome_file = get_prefix(genome_file,args.in_format)
+    raw_abund_matrix = pd.DataFrame()
+    
+    db_file_prefix = 'NA'
+    if (db_file == 'NA'):
+        print(f'Building Bowtie2 database from {genome_file}')
+        command = f'bowtie2-build --threads {args.threads} {genome_file} {prefix_genome_file}'
+        db_file = prefix_genome_file
+        db_file_prefix = prefix_genome_file
+        subprocess.call(command, shell=True)
+    else:
+        db_file_prefix = get_prefix(db_file,"DUMMY")
+    
+
+    raw_read_info_df = index_info(raw_read_table,"Sample",'\t',header=0)
+    
+    for sample,row in raw_read_info_df.iterrows():
+        print(f'Aligning reads of {sample}')
+        outfile = sample+'x'+db_file_prefix
+        r1_file = row['R1']
+        r2_file = row['R2']
+        command = f"bowtie2 -x {db_file} -q -1 {r1_file} -2 {r2_file} -S {outfile}.sam --{bowtie_mode} --no-unal --threads {args.threads}"
+        if (max_reads > 0):
+            command = command + f" -u {max_reads}"
+        if (args.parse_only == False):
+            print(f"Running: {command}")
+            subprocess.call(command, shell=True)
+        
+        if (args.parse_only == False):
+            command = f'samtools view -bS {outfile}.sam > {outfile}.bam'
+            subprocess.call(command, shell=True)
+            command = f'samtools sort {outfile}.bam -o {outfile}.sorted.bam'
+            subprocess.call(command, shell=True)
+            command = f'rm -f {outfile}.sam {outfile}.bam'
+            subprocess.call(command, shell=True)
+            command = f'samtools index {outfile}.sorted.bam'
+            subprocess.call(command, shell=True)
+            command = f'samtools idxstats {outfile}.sorted.bam > {outfile}.Counts.tsv'
+            subprocess.call(command, shell=True)
+        sample_abund = index_info(f'{outfile}.Counts.tsv',None,'\t',header=None)
+        sample_abund = sample_abund.rename(columns={0: "Sequence", 1: "Length",2: sample, 3: "Unmapped"})
+        sample_abund = sample_abund.set_index('Sequence')
+        sample_abund.drop(sample_abund.tail(1).index,inplace=True)
+        if (min_count > 0):
+            sample_abund.loc[sample_abund[sample] < min_count, sample] = 0
+        frames = [raw_abund_matrix,sample_abund[sample]]
+        raw_abund_matrix = pd.concat(frames,axis=1)
+        #print(raw_abund_matrix.shape)
+    
+    raw_abund_matrix_file = 'Raw_Abundance_'+f'{prefix_genome_file}.tsv'
+    raw_abund_matrix.to_csv(raw_abund_matrix_file,sep="\t",na_rep='NA')
+    
+    if (args.abundance_rpkm == True):
+        #Calc perc abundance
+        print("Calculating percentage abundance")
+        perc_abund_matrix_file = 'Percentage_Abundance_'+f'{prefix_genome_file}.tsv'
+        #perc_abund_matrix = (raw_abund_matrix / raw_abund_matrix.sum(axis=1)) * 100
+        perc_abund_matrix = (raw_abund_matrix.div(raw_abund_matrix.sum(axis=0),axis=1)) * 100
+        perc_abund_matrix.to_csv(perc_abund_matrix_file,sep="\t",na_rep='NA')
+        #Calc RPKM
+        print("Calculating RPKM abundance")
+        seq_info_matrix = pd.DataFrame.from_dict(seq_info)
+        #Reindex seq_info_matrix in case the orders of sequences differ between seq_info_matrix and raw_abund_matrix
+        seq_info_matrix = seq_info_matrix.reindex(raw_abund_matrix.index.values)
+        rpkm_abund_matrix_file = 'RPKM_Abundance_'+f'{prefix_genome_file}.tsv'
+        rpkm_abund_matrix = (raw_abund_matrix.div((seq_info_matrix['Length'] / 1000),axis=0)  / (raw_abund_matrix.sum(axis=0) / 1000000))
+        rpkm_abund_matrix.index.name = 'Sequence'
+        rpkm_abund_matrix.to_csv(rpkm_abund_matrix_file,sep="\t",na_rep='NA')
+
+def calc_abundance_old(genome_file,db_file,metagenomes_dir,metagenomes_extension,max_reads,bowtie_mode,min_count):
     prefix_genome_file = get_prefix(genome_file,args.in_format)
     raw_abund_matrix = pd.DataFrame()
     
@@ -1004,8 +1075,10 @@ def parse_mmseqs_cluster_file(out_mmseqs_cluster_file):
     cluster_info = defaultdict(dict)
     #Output file is a .tsv where OG is the first column and cds is the scond
     lines = open(out_mmseqs_cluster_file,"r").readlines()
+    compiled_obj = re.compile('\W')
     for line in lines:
         (og,cds) = line.split('\t')
+        og = re.sub(compiled_obj,'_',og)
         protein_info['OG'][cds.rstrip()] = og
         genome = re.sub('_(\d)+$','',cds)
         genome = genome.rstrip()
@@ -1072,7 +1145,7 @@ def make_og_table(genome_file,cds_file):
     
 def call_mmseqs_cluster(cds_file,prefix_genome_file,threads):
     print('Running mmseqs easy-cluster')
-    command = f'mmseqs easy-cluster {cds_file} {prefix_genome_file} tmp --threads {threads} -c 0.5 -s 7.5 --min-seq-id 0.3 --cov-mode 0'
+    command = f'mmseqs easy-cluster {cds_file} {prefix_genome_file} tmp --threads {threads} -c 0.3 -s 7.5 --min-seq-id 0.25 --cov-mode 0'
     subprocess.call(command, shell=True)
     out_mmseqs_cluster_file = prefix_genome_file+'_cluster.tsv'
     return out_mmseqs_cluster_file
