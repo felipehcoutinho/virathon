@@ -271,8 +271,6 @@ def explode_fasta(genome_file,split_genomes_dir):
 
 def call_phist(genome_file="",remove_exact_matches=False,putative_host_genomes_directory="",extension_putative_host_genomes="fasta"):
     print("Running PHIST host prediction module")
-    #Create a directory to store the PHIST input data and the results
-    #os.makedirs("PHIST_Virathon/",exist_ok=True)
     #If specified run the module to remove exact matches from putative hosts genomes
     if (remove_exact_matches == True):
         hostg_files = glob.glob(f"{putative_host_genomes_directory}/*{extension_putative_host_genomes}")
@@ -379,7 +377,7 @@ def call_phist(genome_file="",remove_exact_matches=False,putative_host_genomes_d
         
     #Explode the fasta file of viral sequence genomes
     cwd = os.getcwd()
-    #explode_fasta(genome_file,split_genomes_dir=f"{cwd}/Viral_Genomes_PHIST")
+    explode_fasta(genome_file,split_genomes_dir=f"{cwd}/Viral_Genomes_PHIST")
     #Run PHIST
     subprocess.call(f"python3 /mnt/lustre/bio/users/fcoutinho/PHIST/phist.py -t {args.threads} Viral_Genomes_PHIST/ {putative_host_genomes_directory} PHIST_Kmers.csv PHIST_Predictions.csv",shell=True)
     #Collect results
