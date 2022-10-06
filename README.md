@@ -1,4 +1,7 @@
-![Virathon Logo](/path/to/image.png "Virathon logo: Generated with Craiyon")
+<p align="center">
+  <img src="https://github.com/felipehcoutinho/virathon/blob/main/Virathon_Logo_by_Craiyon.png" alt="Virathon logo generated with Craiyon"/>
+</p>
+
 # Virathon: Genomic Analysis of Viruses of Archaea and Bacteria
 
 ## Introduction
