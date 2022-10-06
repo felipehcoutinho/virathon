@@ -1,3 +1,4 @@
+![Virathon Logo](/path/to/image.png "Virathon logo: Generated with Craiyon")
 # Virathon: Genomic Analysis of Viruses of Archaea and Bacteria
 
 ## Introduction
