@@ -71,8 +71,6 @@ parser.add_argument("--metagenomes_dir", help="Directories containing metagenome
 parser.add_argument("--metagenomes_extension", help="Extension of the fastq files in metagenomes_dir to be used for abundance calculation", default="fastq", type=str)
 parser.add_argument("--raw_read_table", help=".tsv file specifying the Sample ID, R1 Reads file, R2 Reads File, and Sample Group", type=str)
 parser.add_argument("--assemble", help="Flag to run the assembly module", default=False, type=bool)
-parser.add_argument("--samples_dir", help="Directory containing fastq files to be used for assembly",  nargs="+",type=str)
-parser.add_argument("--samples_extension", help="Extension of the fastq files in samples_dir", default='fastq', type=str)
 parser.add_argument("--min_cluster_size", help="The minimum number of proteins in a cluster to be used by the ogscoretable_module and ogphylogeny modules", default=3, type=int)
 parser.add_argument("--filter", help="Flag to run sequence filtering module", default=False, type=bool)
 parser.add_argument("--min_length", help="Minimum sequence length for the filtering modules", default=1000, type=int)
@@ -91,7 +89,7 @@ def central():
         merged_genomes_file = genome_files[0]
     #Run the assembly module if specified by the user
     if (args.assemble == True):
-        merged_genomes_file = call_spades(args.samples_dir,args.samples_extension)
+        merged_genomes_file = call_spades(raw_read_table=args.raw_read_table)
     #Call sequence filtering modules if user specified so
     if (args.filter == True):
         filtered_genome_file = filter_seqs(merged_genomes_file,args.min_length,args.max_length)
@@ -655,15 +653,13 @@ def index_seqs(genome_files,cds_file,rename_seqs,out_seq_file,merge_seqs):
             seq_info['CDS_Count'][scaffold_id] += 1
 
     
-def call_spades(samples_dir,samples_extension):
-    samples_index = index_samples(samples_dir,samples_extension,False)
+def call_spades(raw_read_table=""):
+    raw_read_info_df = index_info(raw_read_table,"Sample",'\t',header=0)
     scaffold_files = []
-    #print(f"Level 1 Keys:",samples_index.keys())
-    for sample in samples_index.keys():
+    for sample,row in raw_read_info_df.iterrows():
+        r1_file = row['R1']
+        r2_file = row['R2']
         print(f'Assembling {sample}')
-        #print(f"Keys for {sample}:",samples_index[sample].keys())
-        r1_file = samples_index[sample]['R1']
-        r2_file = samples_index[sample]['R2']
         command = f'spades.py -1 {r1_file} -2 {r2_file} -o Assembly_{sample} --threads {args.threads} --meta'
         subprocess.call(command, shell=True)
         out_file = f'Assembly_{sample}/scaffolds.fasta'
