@@ -1,0 +1,6 @@
+Sample	R1	R2	Group
+S1	/Sequences/cleanReads/Sample1_R1.fastq.gz	/Sequences/cleanReads/Sample1_R2.fastq.gz	G1
+S2	/Sequences/cleanReads/Sample2_R1.fastq	/Sequences/cleanReads/Sample2_R1.fastq	G2
+S3	/Sequences/cleanReads/Sample3_R1.fastq	/Sequences/cleanReads/Sample3_R2.fastq	G3
+S4	/Sequences/cleanReads/Sample4_R1.fastq	/Sequences/cleanReads/Sample4_R2.fastq	G3
+S5	/Sequences/cleanReads/Sample5_R1.fastq	/Sequences/cleanReads/Sample5_R2.fastq	G3
