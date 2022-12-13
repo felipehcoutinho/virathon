@@ -37,6 +37,9 @@ Virathon is writen in Python 3 and uses multiple external depencies.
 
 The raw_read_table is a tsv format table with 4 columns with exactly thse headers: Sample R1 R2 Group. Where Sample defines the unique identifier to be used for a sample read pair (e.g. genome, metagenome, SAG sequencing). R1 and R2 define the full path of the R1 and R2 file sin your system. Group definies in which group the sample should co-assembled. Samples in the same group are co-assembled. Specifying a unique group for each samples results in samples being assembled individually. The value of Group column is also used to name the output directory and to rename the assembled scaffolds. 
 
+### Clustering viral genomic sequences into viral populations (VPs)
+`python3 Virathon.py --genome_files My_Genomes.fasta --make_pops True --threads 24`
+
 ###	Generating an Orthologous Group (OG) count x Genome table starting from a fasta file of genomic sequences
 `python3 Virathon.py --genome_files My_Genomes.fasta --call_ogtable_module True`
 
