@@ -56,10 +56,10 @@ This will generate the following files:
 -  Phylogenies_Aligned_Clusters_My_Genomes directory containing multiple fasta files, each containing the aligned (using Muscle) sequences from each OG, provided that the OG has at least 5 proteins 
 
 ### Calculating abundances by read mapping staring from a fasta file of genomic sequences
-`python3 Virathon.py --genome_files My_Genomes.fasta --abundance_table True --abundance_rpkm True --metagenomes_extension .fastq --metagenomes_dir Dir_1/ Dir_2/ Dir3/ ...`
+`python3 Virathon.py --genome_files My_Genomes.fasta --abundance_table True --abundance_rpkm True --raw_read_table Metagenome_Info.tsv --threads 24`
 
 ### Calculating abundances by read mapping staring from a Bowtie2 database
-`python3 Virathon.py --bowtiedb My_DB_Prefix --abundance_table True --abundance_rpkm True --metagenomes_extension .fastq --metagenomes_dir Dir_1/ Dir_2/ Dir3/ ...`
+`python3 Virathon.py --bowtiedb My_DB_Prefix --abundance_table True --abundance_rpkm True --raw_read_table Metagenome_Info.tsv --threads 24`
 
 ### Running host prediction and taxonomic assignment with vpf-class:
 `python3 Virathon.py --genome_files My_Genomes.fasta --call_vpf_class True`
