@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-
+#Virathon: Genomic Analysis of Viruses of Archaea and Bacteria
 from collections import defaultdict
 from Bio import SeqIO
 from Bio import SearchIO
@@ -60,6 +60,7 @@ parser.add_argument("--hmmer_db", help="Hmmer DB file prefix", default=False, ty
 parser.add_argument("--hmmer_program", help="Hmmer program to run (hmmscan or hmmsearch)", default='hmmsearch', type=str)
 parser.add_argument("--hmmer_min_score", help="Minimum Hmmer score to consider a match as valid", default=50, type=float)
 parser.add_argument("--hmmer_max_evalue", help="Maximum Hmmer -evalue to consider a match as valid", default=0.001, type=float)
+#Bowtie Abundance Params
 parser.add_argument("--abundance_table", help="Flag to run the abundance calculation modules", default=False, type=bool)
 parser.add_argument("--abundance_rpkm", help="Flag to calculate abundance as RPKM", default=False, type=bool)
 parser.add_argument("--abundance_max_reads", help="Set a maximum number of reads per sample to be mapped by parsed by bowtie2. All other reads are ignored. Default behavior is to use all reads in the sample", default=0, type=int)
@@ -691,7 +692,7 @@ def calc_abundance(genome_file,db_file,metagenomes_dir,metagenomes_extension,max
         outfile = sample+'x'+db_file_prefix
         r1_file = row['R1']
         r2_file = row['R2']
-        command = f"bowtie2 -x {db_file} -q -1 {r1_file} -2 {r2_file} -S {outfile}.sam --{bowtie_mode} --no-unal --threads {args.threads}"
+        command = f"bowtie2 -x {db_file} -q -1 {r1_file} -2 {r2_file} -S {outfile}.sam --{bowtie_mode} --no-unal --no-discordant --no-mixed --threads {args.threads}"
         if (max_reads > 0):
             command = command + f" -u {max_reads}"
         if (args.parse_only == False):
