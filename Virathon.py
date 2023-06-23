@@ -60,16 +60,19 @@ parser.add_argument("--hmmer_db", help="Hmmer DB file prefix", default=False, ty
 parser.add_argument("--hmmer_program", help="Hmmer program to run (hmmscan or hmmsearch)", default='hmmsearch', type=str)
 parser.add_argument("--hmmer_min_score", help="Minimum Hmmer score to consider a match as valid", default=50, type=float)
 parser.add_argument("--hmmer_max_evalue", help="Maximum Hmmer -evalue to consider a match as valid", default=0.001, type=float)
-#Bowtie Abundance Params
+#Bowtie2 Abundance options
 parser.add_argument("--abundance_table", help="Flag to run the abundance calculation modules", default=False, type=bool)
 parser.add_argument("--abundance_rpkm", help="Flag to calculate abundance as RPKM", default=False, type=bool)
 parser.add_argument("--abundance_max_reads", help="Set a maximum number of reads per sample to be mapped by parsed by bowtie2. All other reads are ignored. Default behavior is to use all reads in the sample", default=0, type=int)
 parser.add_argument("--abundance_min_count", help="Set a minimum number of reads mapped to a sequence to consider include it in the abundance tables. Default behavior is to use all counts above 0", default=0, type=int)
 parser.add_argument("--bowtiedb", help="Prefix of Bowtie DB to use for abundance calculations instead of building from the genomes file", default='NA', type=str)
-parser.add_argument("--bowtie_mode", help="Alignment mode to run bowtie", default='sensitive-local', type=str)
-parser.add_argument("--metagenomes_dir", help="Directories containing metagenome fastq files to be used for abundance calculation",  nargs="+", type=str)
-parser.add_argument("--metagenomes_extension", help="Extension of the fastq files in metagenomes_dir to be used for abundance calculation", default="fastq", type=str)
+parser.add_argument("--bowtie_mode", help="Alignment mode to run bowtie", default='sensitive', type=str)
+parser.add_argument("--bowtie_k", help="Value for the Bowtie2 -k parameter. If not specified will use default mode, i.e. look for all alignments and only report the best one(s)", default=0, type=int)
 parser.add_argument("--raw_read_table", help=".tsv file specifying the Sample ID, R1 Reads file, R2 Reads File, and Sample Group", type=str)
+#Abundance options to be deprecated:
+parser.add_argument("--metagenomes_dir", help="Directories containing metagenome fastq files to be used for abundance calculation",  nargs="+", type=str)
+#SPAdes assembly options:
+parser.add_argument("--metagenomes_extension", help="Extension of the fastq files in metagenomes_dir to be used for abundance calculation", default="fastq", type=str)
 parser.add_argument("--assemble", help="Flag to run the assembly module", default=False, type=bool)
 parser.add_argument("--min_cluster_size", help="The minimum number of proteins in a cluster to be used by the ogscoretable_module and ogphylogeny modules", default=3, type=int)
 parser.add_argument("--filter", help="Flag to run sequence filtering module", default=False, type=bool)
@@ -88,7 +91,6 @@ def central():
     merged_genomes_file = 'NA'
     if (args.genome_files):
         genome_files = args.genome_files
-        merged_genomes_file = genome_files[0]
     #Run the assembly module if specified by the user
     if (args.assemble == True):
         merged_genomes_file = call_spades(raw_read_table=args.raw_read_table,spades_memory=args.max_ram)
@@ -99,9 +101,8 @@ def central():
     if (args.call_prodigal_module == True):
         (cds_file,gene_file,gff_file) = call_prodigal(merged_genomes_file)
         print('Generated files:',cds_file,gene_file,gff_file)
-        #index_seqs([merged_genomes_file],cds_file,False,'NA',False)
     #Call the index function always
-    index_seqs(genome_files,args.cds,args.rename_seqs,args.out_seq_file,args.merge_seqs)
+    merged_genomes_file = index_seqs(genome_files,args.cds,args.rename_seqs,args.out_seq_file,args.merge_seqs)
     #Cluster sequences into viral populations if specified by the user
     vpop_out_file = 'NA'
     if (args.make_pops_module):
@@ -653,19 +654,28 @@ def index_seqs(genome_files,cds_file,rename_seqs,out_seq_file,merge_seqs):
                 seq_info['CDS_Count'][scaffold_id] = 0
             #Increment cds count of the scaffld
             seq_info['CDS_Count'][scaffold_id] += 1
+    return(out_seq_file)
 
     
 def call_spades(raw_read_table="",spades_memory=250):
     raw_read_info_df = index_info(raw_read_table,"Sample",'\t',header=0)
     scaffold_files = []
-    for sample,row in raw_read_info_df.iterrows():
-        r1_file = row['R1']
-        r2_file = row['R2']
-        print(f'Assembling {sample}')
-        command = f'spades.py -1 {r1_file} -2 {r2_file} -o Assembly_{sample} --threads {args.threads} --memory {spades_memory} --meta'
-        subprocess.call(command, shell=True)
-        out_file = f'Assembly_{sample}/scaffolds.fasta'
-        scaffold_files.append(out_file)
+    if (not raw_read_info_df.empty):
+        for group in set(raw_read_info_df['Group']):
+            print(f"Processing samples from group {group}")
+            group_df = raw_read_info_df[raw_read_info_df['Group'] == group]
+            samples_list = group_df.index
+            print(f"Assembling sample(s): {samples_list}")
+            r1_files = list(group_df['R1'])
+            r1_files = ' -1 '.join(r1_files)
+            r2_files = list(group_df['R2'])
+            r2_files = ' -2 '.join(r2_files)
+            command = f'spades.py -1 {r1_files} -2 {r2_files} -o Assembly_{group} --threads {args.threads} --memory {spades_memory} --meta'
+            if (args.parse_only == False):
+                print(f"Running: {command}")
+                subprocess.call(command, shell=True)
+            out_file = f'Assembly_{group}/scaffolds.fasta'
+            scaffold_files.append(out_file)
     index_seqs(scaffold_files,'',True,'Merged_Scaffolds.fasta',True)
     filter_seqs('Merged_Scaffolds.fasta',1000,999999999)
     return('Filtered_Merged_Scaffolds.fasta')
@@ -687,40 +697,49 @@ def calc_abundance(genome_file,db_file,metagenomes_dir,metagenomes_extension,max
 
     raw_read_info_df = index_info(raw_read_table,"Sample",'\t',header=0)
     
-    for sample,row in raw_read_info_df.iterrows():
-        print(f'Aligning reads of {sample}')
-        outfile = sample+'x'+db_file_prefix
-        r1_file = row['R1']
-        r2_file = row['R2']
-        command = f"bowtie2 -x {db_file} -q -1 {r1_file} -2 {r2_file} -S {outfile}.sam --{bowtie_mode} --no-unal --no-discordant --no-mixed --threads {args.threads}"
-        if (max_reads > 0):
-            command = command + f" -u {max_reads}"
-        if (args.parse_only == False):
-            print(f"Running: {command}")
-            subprocess.call(command, shell=True)
-        
-        if (args.parse_only == False):
-            command = f'samtools view -bS {outfile}.sam > {outfile}.bam'
-            subprocess.call(command, shell=True)
-            command = f'samtools sort {outfile}.bam -o {outfile}.sorted.bam'
-            subprocess.call(command, shell=True)
-            command = f'rm -f {outfile}.sam {outfile}.bam'
-            subprocess.call(command, shell=True)
-            command = f'samtools index {outfile}.sorted.bam'
-            subprocess.call(command, shell=True)
-            command = f'samtools idxstats {outfile}.sorted.bam > {outfile}.Counts.tsv'
-            subprocess.call(command, shell=True)
-        sample_abund = index_info(f'{outfile}.Counts.tsv',None,'\t',header=None)
-        sample_abund = sample_abund.rename(columns={0: "Sequence", 1: "Length",2: sample, 3: "Unmapped"})
-        sample_abund = sample_abund.set_index('Sequence')
-        sample_abund.drop(sample_abund.tail(1).index,inplace=True)
-        if (min_count > 0):
-            sample_abund.loc[sample_abund[sample] < min_count, sample] = 0
-        frames = [raw_abund_matrix,sample_abund[sample]]
-        raw_abund_matrix = pd.concat(frames,axis=1)
+    if (not raw_read_info_df.empty):
+        for group in set(raw_read_info_df['Group']):
+            print(f"Processing samples from group {group}")
+            group_df = raw_read_info_df[raw_read_info_df['Group'] == group]
+            samples_list = group_df.index
+            print(f"Aligning reads from sample(s): "+str(",".join(set(samples_list))))
+            r1_files = list(group_df['R1'])
+            r1_files = ' -1 '.join(r1_files)
+            r2_files = list(group_df['R2'])
+            r2_files = ' -2 '.join(r2_files)
+            outfile = group+'x'+db_file_prefix
+            command = f"bowtie2 -x {db_file} -q -1 {r1_files} -2 {r2_files} -S {outfile}.sam --{bowtie_mode} --no-discordant --no-mixed --no-unal --threads {args.threads}"
+            if (max_reads > 0):
+                command = command + f" -u {max_reads}"
+            if (args.bowtie_k > 0):
+                command = command + f" -k {args.bowtie_k}"
+            if (args.parse_only == False):
+                print(f"Running: {command}")
+                subprocess.call(command, shell=True)
+            if (args.parse_only == False):
+                command = f'samtools view -bS {outfile}.sam > {outfile}.bam'
+                subprocess.call(command, shell=True)
+                command = f'samtools sort {outfile}.bam -o {outfile}.sorted.bam'
+                subprocess.call(command, shell=True)
+                command = f'rm -f {outfile}.sam {outfile}.bam'
+                subprocess.call(command, shell=True)
+                command = f'samtools index {outfile}.sorted.bam'
+                subprocess.call(command, shell=True)
+                command = f'samtools idxstats {outfile}.sorted.bam > {outfile}.Counts.tsv'
+                subprocess.call(command, shell=True)
+            sample_abund = index_info(f'{outfile}.Counts.tsv',None,'\t',header=None)
+            sample_abund = sample_abund.rename(columns={0: "Sequence", 1: "Length",2: group, 3: "Unmapped"})
+            sample_abund = sample_abund.set_index('Sequence')
+            sample_abund.drop(sample_abund.tail(1).index,inplace=True)
+            if (min_count > 0):
+                sample_abund.loc[sample_abund[group] < min_count, group] = 0
+            frames = [raw_abund_matrix,sample_abund[group]]
+            raw_abund_matrix = pd.concat(frames,axis=1)
         #print(raw_abund_matrix.shape)
     
     raw_abund_matrix_file = 'Raw_Abundance_'+f'{prefix_genome_file}.tsv'
+    raw_abund_matrix.index.name = 'Sequence'
+    raw_abund_matrix = raw_abund_matrix.div(2,axis=0)
     raw_abund_matrix.to_csv(raw_abund_matrix_file,sep="\t",na_rep='NA')
     
     if (args.abundance_rpkm == True):
