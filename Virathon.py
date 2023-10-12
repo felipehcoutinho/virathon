@@ -24,7 +24,7 @@ parser.add_argument("--in_format", help="Input Sequence file format", default="f
 parser.add_argument("--info_output", help="The output table file with the generated data for the genomic sequences", default="Seq_Info.tsv", type =str)
 parser.add_argument("--rename_seqs", help="Flag to rename genomic sequences while indexing. CDS and Gene sequence files cannot be renamed.", default=False, type=bool)
 parser.add_argument("--string_rename", help="String to use when renaming genomics sequences", default='Seq_', type=str)
-parser.add_argument("--min_length", help="Minimum genomic sequence length", default=1000, type=int)
+parser.add_argument("--min_length", help="Minimum genomic sequence length", default=0, type=int)
 parser.add_argument("--max_length", help="Maximum genomic sequence length", default=3000000, type=int)
 parser.add_argument("--out_seq_file", help="Name of the merged output file of genome sequences", default='Merged_Sequences.fasta', type=str)
 parser.add_argument("--call_prodigal_module", help="Flag to run the gene calling module", default=False, type=bool)
@@ -93,6 +93,7 @@ def central():
     #Run the index module for the genomic sequences, if provided
     if (args.genome_files):
         index_seqs(in_seq_files=args.genome_files,rename_seqs=args.rename_seqs, seq_type="genomic", out_seq_file=merged_genomes_file)
+        print(f"Merged genomic seqs file: {merged_genomes_file}")
     #Perform gene calling with prodigal through the call_prodigal function if specified by the user
     if (args.call_prodigal_module == True):
         (out_cds_file,out_genes_file,gff_file) = call_prodigal(merged_genomes_file)
@@ -103,11 +104,11 @@ def central():
     #Index gene and cds files supplid by the user, only when prodigal generated files have not been generated.
     else:
         if (args.gene_files):
-            print(f"Merged genomic seqs file: {merged_genomes_file}")
-            print(f"Merged genes file: {merged_genes_file}")
             index_seqs(in_seq_files=args.gene_files,rename_seqs=False, seq_type="gene", out_seq_file=merged_genes_file)
-        if (args.cds_file):
-            index_seqs(in_seq_files=args.cds_file,rename_seqs=False, seq_type="cds", out_seq_file=merged_cds_file)      
+            print(f"Merged genes file: {merged_genes_file}")
+        if (args.cds_files):
+            index_seqs(in_seq_files=args.cds_files,rename_seqs=False, seq_type="cds", out_seq_file=merged_cds_file)
+            print(f"Merged CDS file: {merged_cds_file}")      
     #Cluster sequences into viral populations if specified by the user
     vpop_out_file = 'NA'
     if (args.make_pops_module):
@@ -175,7 +176,7 @@ def index_seqs(in_seq_files=[],seq_type=None,rename_seqs=False,out_seq_file=None
     print("Running indexing module")
     seq_counter = 0
     filtered_seqs = 0
-    seen_ids=[]
+    seen_ids= dict()
     if (out_seq_file):
         OUT = open(out_seq_file,'w', newline='')
     #with open(out_seq_file, 'w', newline='') as OUT:
@@ -219,7 +220,7 @@ def index_seqs(in_seq_files=[],seq_type=None,rename_seqs=False,out_seq_file=None
             #Do not allow duplicated sequence IDs
             if (seqobj.id in seen_ids):
                 raise Exception(f'Duplicated ID: {seqobj.id} in {seq_file}')
-            seen_ids.append(seqobj.id)
+            seen_ids[seqobj.id] = True
             if ((out_seq_file) and (seq_passed == True)):
                 SeqIO.write(seqobj, OUT, "fasta")
     if (out_seq_file):

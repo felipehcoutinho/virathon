@@ -6,7 +6,7 @@
 
 ## Introduction
 
-Virathon is designed to automate the analysis of the genomes of viruses of Archaea and Bacteria, specially uncultured ones originated from metagenomic samples
+Virathon is designed to automate the analysis of genomic sequences derived from viruses of Archaea and Bacteria, specially uncultured ones originated from metagenomic samples
 
 ***
 
@@ -35,7 +35,22 @@ Virathon is writen in Python 3 and uses multiple external depencies.
 ### Assembling (or co-assembling) genomes, metagenomes, or viromes with SPAdes:
 `python3 Virathon.py --assemble True --raw_read_table Metagenome_Info.tsv --threads 24`
 
-The raw_read_table is a tsv format table with 4 columns with exactly thse headers: Sample R1 R2 Group. Where Sample defines the unique identifier to be used for a sample read pair (e.g. genome, metagenome, SAG sequencing). R1 and R2 define the full path of the R1 and R2 file sin your system. Group definies in which group the sample should co-assembled. Samples in the same group are co-assembled. Specifying a unique group for each samples results in samples being assembled individually. The value of Group column is also used to name the output directory and to rename the assembled scaffolds. 
+The raw_read_table is a tsv format table with 4 columns with exactly thse headers: Sample R1 R2 Group. Where Sample defines the unique identifier to be used for a sample read pair (e.g. genome, metagenome, SAG sequencing). R1 and R2 define the full path of the R1 and R2 file sin your system. Group definies in which group the sample should co-assembled. Samples in the same group are co-assembled. Specifying a unique group for each samples results in samples being assembled individually. The value of Group column is also used to name the output directory and to rename the assembled scaffolds.
+
+### Indexing basic sequence information
+Passing genomic, gene, or cds files will prompt virathon to collect basic information for genomic sequences (sequence ID, description, length, GC content, number oc CDS and genes epr scaffold) and print it to the Seq_Info.tsv file. Multiple genome, cds, or gene files may be provided at a time. Generated files:
+
+### Indexing a single genomicfile
+`python3 Virathon.py --genome_files My_Genomes.fasta`
+
+### Indexing a genomic, a cds, and a gene sequence file
+`python3 Virathon.py --genome_files My_Genomes.fasta --cds_files My_CDS.faa --gene_files My_Genes.fna`
+- All_Genomic.fasta (If at least one genomic sequence file is provided to --genome_files)
+- All_CDS.fasta (If at least one CDS sequence file is provided to --cds_files)
+- All_Genes.fasta (If at least one gene sequence file is provided to --cds_files)
+- Seq_Info.tsv
+### Indexing three genomic, no cds, and a single gene sequence file, and writing the output table to  Info_Genomes.tsv
+`python3 Virathon.py --genome_files My_Genomes_1.fasta My_Genomes_2.fasta My_Genomes_3.fasta --gene_files My_Genes_1+2+3.fna --info_output Info_Genomes.tsv`
 
 ### Clustering viral genomic sequences into viral populations (VPs)
 `python3 Virathon.py --genome_files My_Genomes.fasta --make_pops True --threads 24`
