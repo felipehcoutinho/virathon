@@ -340,30 +340,40 @@ def call_phist(genome_file="",remove_exact_matches=False,putative_host_genomes_d
     if (remove_exact_matches == True):
         hostg_files = glob.glob(f"{putative_host_genomes_directory}/*{extension_putative_host_genomes}")
         hostg_count = len(hostg_files)
-        print(f"Searching for viral Sequences from {hostg_count} host genomes")
+        print(f"Merging and indexing sequences from {hostg_count} host genome files")
         #Merge all host genome sequences in All_Host_Seqs.fasta. Iterate over each sequence and collect basic info
         host_seq_info = defaultdict(dict)
         host_genome_info = defaultdict(lambda: defaultdict(int))
-        with open('All_Host_Seqs.fasta', 'w', newline='') as OUT:
-            for hostg in hostg_files:
-                #print('Processing',hostg)
-                for seqobj in SeqIO.parse(hostg, 'fasta'):
-                    host_genome_info['Sequence_Count'][hostg] += 1
-                    host_genome_info['Bp_Count'][hostg] += len(seqobj.seq)
-                    host_genome_info['Virus_List'][hostg] = set()
-                    host_genome_info['Virus_Regions'][hostg] = []
-                    host_seq_info["Source"][seqobj.id] = "Host"
-                    host_seq_info["Genome"][seqobj.id] = hostg
-                    host_seq_info["Length"][seqobj.id] = len(seqobj.seq)
-                    if (args.parse_only == False):
-                        SeqIO.write(seqobj, OUT, "fasta")
+        if (args.parse_only == False):
+            OUT = open("All_Host_Seqs.fasta",'w', newline='')
+        file_counter = 0
+        for hostg in hostg_files:
+            file_counter += 1
+            if (file_counter % 1000 == 0):
+                print(f"\tProcessed {file_counter} host genome files")
+            for seqobj in SeqIO.parse(hostg, 'fasta'):
+                host_genome_info['Sequence_Count'][hostg] += 1
+                host_genome_info['Bp_Count'][hostg] += len(seqobj.seq)
+                host_genome_info['Virus_List'][hostg] = set()
+                host_genome_info['Virus_Regions'][hostg] = []
+                host_seq_info["Source"][seqobj.id] = "Host"
+                host_seq_info["Genome"][seqobj.id] = hostg
+                host_seq_info["Length"][seqobj.id] = len(seqobj.seq)
+                if (args.parse_only == False):
+                    SeqIO.write(seqobj, OUT, "fasta")
+        if (args.parse_only == False):
+            OUT.close()
+            print(f"Merged Host genome sequences written to All_Host_Seqs.fasta")
         #Query viral genomes against putative host genomes using BLASTN
+        print(f"Building BLASTN database of host sequences")
         host_blast_db_name = build_blast_db(input_file="All_Host_Seqs.fasta")
+        print(f"Querying viral sequences against host sequences using BLASTN")
         blast_result = call_blast(query=genome_file,ref_db=host_blast_db_name)
         #Iterate over BLASTN output and index results
         coord_info = defaultdict(dict)
         seen_pairs = defaultdict(dict)
         valid_count = 0
+        print(f"Collecting virusXhost matches data from {blast_result}")
         for qresult in SearchIO.parse(blast_result, 'blast-tab'):
             #Iterate over hits in the query
             for hit in qresult.hits:
@@ -414,7 +424,8 @@ def call_phist(genome_file="",remove_exact_matches=False,putative_host_genomes_d
                     original_seq = seqobj.seq
                     full_length = len(seqobj.seq)
                     index_length = full_length - 1
-                    sub_coord = coord_info_df[coord_info_df["Host_Sequence"] == seqobj.id]
+                    if ("Host_Sequence" in coord_info_df):
+                        sub_coord = coord_info_df[coord_info_df["Host_Sequence"] == seqobj.id]
                     if (len(sub_coord) >= 1):
                         for i,coord in sub_coord.iterrows():
                             #print(coord)
@@ -444,9 +455,9 @@ def call_phist(genome_file="",remove_exact_matches=False,putative_host_genomes_d
     cwd = os.getcwd()
     explode_fasta(genome_file,split_genomes_dir=f"{cwd}/Viral_Genomes_PHIST")
     #Run PHIST
-    subprocess.call(f"python3 /mnt/lustre/bio/users/fcoutinho/PHIST/phist.py -t {args.threads} Viral_Genomes_PHIST/ {putative_host_genomes_directory} PHIST_Kmers.csv PHIST_Predictions.csv",shell=True)
+    subprocess.call(f"phist.py -t {args.threads} Viral_Genomes_PHIST/ {putative_host_genomes_directory} PHIST_Output/",shell=True)
     #Collect results
-    return("PHIST_Predictions.csv")
+    return("/PHIST_Output/predictions.csv")
 
 def get_prefix(file,extension):
     prefix_file = re.sub(f'(\.)+{extension}$','',file)
