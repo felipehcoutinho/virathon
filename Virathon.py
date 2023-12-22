@@ -450,13 +450,15 @@ def call_phist(genome_file="",remove_exact_matches=False,putative_host_genomes_d
                                 SeqIO.write(split_seq, OUT, "fasta")
                     else:
                         SeqIO.write(seqobj, OUT, "fasta")
-        
-    #Explode the fasta file of viral sequence genomes
-    cwd = os.getcwd()
-    explode_fasta(genome_file,split_genomes_dir=f"{cwd}/Viral_Genomes_PHIST")
     #Run PHIST
-    subprocess.call(f"phist.py -t {args.threads} Viral_Genomes_PHIST/ {putative_host_genomes_directory} PHIST_Output/",shell=True)
-    #Collect results
+    if (args.parse_only == False):
+        #Explode the fasta file of viral sequence genomes
+        cwd = os.getcwd()
+        explode_fasta(genome_file,split_genomes_dir=f"{cwd}/Viral_Genomes_PHIST")
+        command=f"phist.py -t {args.threads} Viral_Genomes_PHIST/ {putative_host_genomes_directory} PHIST_Output/"
+        print(f"Running PHIST with command {command}")
+        subprocess.call(command,shell=True)
+    #Return results file
     return("/PHIST_Output/predictions.csv")
 
 def get_prefix(file,extension):
