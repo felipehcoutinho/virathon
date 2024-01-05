@@ -49,11 +49,15 @@ Passing genomic, gene, or cds files will prompt virathon to collect basic inform
 - All_CDS.fasta (If at least one CDS sequence file is provided to --cds_files)
 - All_Genes.fasta (If at least one gene sequence file is provided to --cds_files)
 - Seq_Info.tsv
+
 ### Indexing three genomic, no cds, and a single gene sequence file, and writing the output table to  Info_Genomes.tsv
 `python3 Virathon.py --genome_files My_Genomes_1.fasta My_Genomes_2.fasta My_Genomes_3.fasta --gene_files My_Genes_1+2+3.fna --info_output Info_Genomes.tsv`
 
 ### Clustering viral genomic sequences into viral populations (VPs)
-`python3 Virathon.py --genome_files My_Genomes.fasta --make_pops True --threads 24`
+`python3 Virathon.py --genome_files My_Genomes.fasta --make_pops True --threads 24 --gene_files My_Genes.fna`
+This will generate the following files:
+- Seq_Info.tsv, in which the Population column idicates the VP to which the sequence was assigned, while the Population_Representative indicates if said sequence is the Representative of the VP (i.e. longest sequence)
+Note: If --gene_files is not provided, will call genes with Prodigal.
 
 ###	Generating an Orthologous Group (OG) count x Genome table starting from a fasta file of genomic sequences
 `python3 Virathon.py --genome_files My_Genomes.fasta --call_ogtable_module True`

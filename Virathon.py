@@ -112,7 +112,7 @@ def central():
     #Cluster sequences into viral populations if specified by the user
     vpop_out_file = 'NA'
     if (args.make_pops_module):
-        vpop_out_file = make_pops(merged_genomes_file,args.gene)
+        vpop_out_file = make_pops(merged_genomes_file, merged_genes_file)
     #If specified by the user perform virus prediction with VIBRANT and Index the results
     bacphlip_out_file = 'NA'
     if (args.bacphlip == True):
@@ -239,7 +239,7 @@ def print_results(info_dict,og_table_out_file,og_score_table_out_file,vibrant_ou
     if ((args.call_vibrant_module == True) and (vibrant_out_quality_file != 'NA')):
         vibrant_info_data_frame = index_info(vibrant_out_quality_file,'scaffold')
         lysogen_count = 0
-        compiled_obj = re.compile('_fragment_(\d)+$')
+        compiled_obj = re.compile('_fragment_(\\d)+$')
         for i,row in vibrant_info_data_frame.iterrows():
             frag_match = re.search(compiled_obj,i)
             clean_name = i.split(' ')[0]
@@ -260,7 +260,7 @@ def print_results(info_dict,og_table_out_file,og_score_table_out_file,vibrant_ou
     if ((args.call_vibrant_module == True) and (vibrant_out_amg_file != 'NA')):
         vibrant_info_data_frame = index_info(vibrant_out_amg_file,'protein')
         vibrant_amg_dict = defaultdict(dict)
-        compiled_obj = re.compile('_fragment_(\d)+$')
+        compiled_obj = re.compile('_fragment_(\\d)+$')
         for i,row in vibrant_info_data_frame.iterrows():
             scaffold = row['scaffold']
             clean_name = scaffold.split(' ')[0]
@@ -462,7 +462,7 @@ def call_phist(genome_file="",remove_exact_matches=False,putative_host_genomes_d
     return("/PHIST_Output/predictions.csv")
 
 def get_prefix(file,extension):
-    prefix_file = re.sub(f'(\.)+{extension}$','',file)
+    prefix_file = re.sub(f'(\\.)+{extension}$','',file)
     prefix_file = re.sub('(.)+/','',prefix_file)
     return prefix_file
 
@@ -494,7 +494,7 @@ def call_virsorter2(genome_file):
     virsorter_out_file = "final-viral-score.tsv"
     virsorter_df = index_info(virsorter_out_file,"seqname",'\t',0)
     virsorter_df_columns = virsorter_df.columns
-    compiled_obj = re.compile('\|\|full$')
+    compiled_obj = re.compile('\\|\\|full$')
     for scaffold,row in virsorter_df.iterrows():
         scaffold = re.sub(compiled_obj,'',scaffold)
         seq_info["VirSorter_Is_Virus"][scaffold] = True
@@ -652,8 +652,8 @@ def calc_recip_scores(infile):
                 is_valid = check_match_cutoff(hsp,0.001,30,0.3,30)
                 if (is_valid):
                     #Derive the original scaffold name from the CDS id
-                    genomeA = re.sub('_(\d)+$','',qresult.id)
-                    genomeB = re.sub('_(\d)+$','',hit.id)
+                    genomeA = re.sub('_(\\d)+$','',qresult.id)
+                    genomeB = re.sub('_(\\d)+$','',hit.id)
                     #Only go on if matches are between two different scaffolds and two different CDS
                     if ((genomeA != genomeB) and (qresult.id != hit.id)):
                         #Only go on if the query/hit pair has not been processed before
@@ -788,7 +788,7 @@ def index_samples(metagenomes_dir,metagenomes_extension,count_reads):
             if (re.search('_1',file)):
                 sample_id = file
                 sample_id = re.sub('(.)*/','',sample_id)
-                sample_id = re.sub(f'_1(\.)*{metagenomes_extension}','',sample_id)
+                sample_id = re.sub(f'_1(\\.)*{metagenomes_extension}','',sample_id)
                 pair = file
                 pair = re.sub('_1','_2',pair)
                 samples_index[sample_id]['R1'] = file
@@ -907,12 +907,12 @@ def parse_mmseqs_cluster_file(out_mmseqs_cluster_file):
     cluster_info = defaultdict(dict)
     #Output file is a .tsv where OG is the first column and cds is the scond
     lines = open(out_mmseqs_cluster_file,"r").readlines()
-    compiled_obj = re.compile('\W')
+    compiled_obj = re.compile('\\W')
     for line in lines:
         (og,cds) = line.split('\t')
         og = re.sub(compiled_obj,'_',og)
         protein_info['OG'][cds.rstrip()] = og
-        genome = re.sub('_(\d)+$','',cds)
+        genome = re.sub('_(\\d)+$','',cds)
         genome = genome.rstrip()
         og_table[og][genome]+= 1
         #Create OG_Count field in seq info for the genome if it is not already there
@@ -939,7 +939,7 @@ def parse_hmmer_output(hmmer_out_file,max_evalue=0.001,min_score=50):
             #Iterate over each HSP
             for hsp in hit.hsps:
                 genome = hit.id
-                genome = re.sub('_(\d)+$','',genome)
+                genome = re.sub('_(\\d)+$','',genome)
                 #print(qresult.id,genome,hit.id)
                 is_valid = check_hmmer_match_cutoff(hsp,max_evalue,min_score)
                 if is_valid:
@@ -996,11 +996,11 @@ def make_pops(genome_file,gene_file):
     blastn_out_file_name = prefix_genome_file+'xSelf.blastn'
     if (args.parse_only == False):
         print('Building BLAST Nucleotide DB')
-        command = f'makeblastdb -in {gene_file} -dbtype nucl -title DB_{prefix_genome_file} -out DB_{prefix_genome_file}'
+        command = f'makeblastdb -in {gene_file} -dbtype nucl -title  DB_Genes_{prefix_genome_file} -out  DB_Genes_{prefix_genome_file}'
         subprocess.call(command, shell=True)
         #Call blastn 
         print('Performing BLASTN search')
-        command = f"blastn -db DB_{prefix_genome_file} -query {gene_file} -out {blastn_out_file_name} -outfmt 6 -evalue 0.001 -perc_identity 30 -max_target_seqs 999999 -num_threads {args.threads}"
+        command = f"blastn -db  DB_Genes_{prefix_genome_file} -query {gene_file} -out {blastn_out_file_name} -outfmt 6 -evalue 0.001 -perc_identity 30 -max_target_seqs 999999 -num_threads {args.threads}"
         subprocess.call(command, shell=True)
     
     #Parse the output of BLASTN
@@ -1018,8 +1018,8 @@ def make_pops(genome_file,gene_file):
                 is_valid = check_match_cutoff(hsp,0.001,30,30,30)
                 if (is_valid):
                     #Derive the original scaffold name from the CDS id
-                    genomeA = re.sub('_(\d)+$','',qresult.id)
-                    genomeB = re.sub('_(\d)+$','',hit.id)
+                    genomeA = re.sub('_(\\d)+$','',qresult.id)
+                    genomeB = re.sub('_(\\d)+$','',hit.id)
                     #Only go on if matches are between two different scaffolds and two different CDS
                     if ((genomeA != genomeB) and (qresult.id != hit.id)):
                         #print(genomeA,genomeB,hsp)
@@ -1027,7 +1027,7 @@ def make_pops(genome_file,gene_file):
                         if (genomeB not in seen_hits[qresult.id].keys()):
                             seen_hits[qresult.id][genomeB] = 1
                             scores['Matched_CDS'][genomeA][genomeB] += 1
-                            scores['Perc_Matched_CDS'][genomeA][genomeB] += ((1 / seq_info['CDS_Count'][genomeA]) * 100)
+                            scores['Perc_Matched_CDS'][genomeA][genomeB] += ((1 / seq_info['Gene_Count'][genomeA]) * 100)
                             scores['ID_Sum'][genomeA][genomeB] += hsp.ident_pct
                             #initialize variables in the scores dictionary if they are not there already
                             
