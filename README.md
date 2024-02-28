@@ -53,12 +53,16 @@ Passing genomic, gene, or cds files will prompt virathon to collect basic inform
 ### Indexing three genomic, no cds, and a single gene sequence file, and writing the output table to  Info_Genomes.tsv
 `python3 Virathon.py --genome_files My_Genomes_1.fasta My_Genomes_2.fasta My_Genomes_3.fasta --gene_files My_Genes_1+2+3.fna --info_output Info_Genomes.tsv`
 
-### Clustering viral genomic sequences into viral populations (VPs)
-`python3 Virathon.py --genome_files My_Genomes.fasta --make_pops True --threads 24 --gene_files My_Genes.fna`
+### Clustering viral genomic sequences into viral populations (VPs) starting from a single file of genomic sequences
+`python3 Virathon.py --genome_files My_Genomes.fasta --make_pops True --threads 24 `
 This will generate the following files:
 - Seq_Info.tsv, in which the Population column idicates the VP to which the sequence was assigned, while the Population_Representative indicates if said sequence is the Representative of the VP (i.e. longest sequence)
 Note: If --gene_files is not provided, will call genes with Prodigal.
 
+### Clustering viral genomic sequences into viral populations (VPs) starting from a single file of genomic sequences and a single genes file containing the DNA sequences of all genes derived from all the genomic sequences
+`python3 Virathon.py --genome_files My_Genomes.fasta --make_pops True --threads 24 --gene_files My_Genes.fna`
+Note: Genomic sequences always needs to be provided even if the genes are provided as well
+ 
 ###	Generating an Orthologous Group (OG) count x Genome table starting from a fasta file of genomic sequences
 `python3 Virathon.py --genome_files My_Genomes.fasta --call_ogtable_module True`
 
@@ -76,6 +80,9 @@ This will generate the following files:
 
 ### Calculating abundances by read mapping staring from a fasta file of genomic sequences
 `python3 Virathon.py --genome_files My_Genomes.fasta --abundance_table True --abundance_rpkm True --raw_read_table Metagenome_Info.tsv --threads 24`
+
+### Calculating abundances by read mapping staring from a directory containing multiple fasta files of genomic sequences
+`python3 Virathon.py --genome_files My_Genomes/*.fasta --abundance_table True --abundance_rpkm True --raw_read_table Metagenome_Info.tsv --threads 24`
 
 ### Calculating abundances by read mapping staring from a Bowtie2 database
 `python3 Virathon.py --bowtiedb My_DB_Prefix --abundance_table True --abundance_rpkm True --raw_read_table Metagenome_Info.tsv --threads 24`
