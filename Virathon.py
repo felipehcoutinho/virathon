@@ -186,27 +186,31 @@ def index_seqs(in_seq_files=[],seq_type=None,rename_seqs=False,out_seq_file=None
         print ("Indexing sequences from",seq_file)
         #Iterate over sequences in the file. Collect basic Info
         for seqobj in SeqIO.parse(seq_file, args.in_format):
+            #The seq_counter value is incremented regardless of teh sequence passing any filters, to it is easier to backtrack to the original file, even if the sequence is renamed later
             seq_passed = True
             seq_counter += 1
             if (seq_counter % 100000 == 0):
                 print(f"\tProcessed {seq_counter} sequences")
             #Record description, length,  file source, and GC for genomic sequences only
             if (seq_type == 'genomic'):
-                #Rename genomic sequences if specified by the user
-                if (rename_seqs == True):
-                    new_id = args.string_rename+str(seq_counter)
-                    seq_info['Original_ID'][new_id] = seqobj.id
-                    seqobj.id = new_id
-                #Skip genomic sequences outside the length range   
+                #Check sequence length  
                 seq_length = len(seqobj.seq)
                 if ((seq_length >= args.min_length) and (seq_length <= args.max_length)):
+                    #Rename genomic sequences if specified by the user. Only sequences that pass the length filter will be in the seq_info dict and listed in the output table.  
+                    if (rename_seqs == True):
+                        new_id = args.string_rename+str(seq_counter)
+                        seq_info['Original_ID'][new_id] = seqobj.id
+                        seqobj.id = new_id
+                    #Collect info for the passed sequences
                     seq_info['Description'][seqobj.id] = seqobj.description
                     seq_info['GC'][seqobj.id] = round(GC(seqobj.seq),2)
                     seq_info['Length'][seqobj.id] = seq_length
                     seq_info['Original_File'][seqobj.id] = seq_file
                 else:
+                    #Skip genomic sequences outside the length range
                     filtered_seqs += 1
-                    seq_passed == False
+                    seq_passed = False
+                    #print(f"FILTERED OUT: {seqobj.id} LEN: {seq_length} PASS: {seq_passed}")
             elif (seq_type == 'cds'):
                 [scaffold_id,cds_num] = seqobj.id.rsplit('_',1)
                 if (scaffold_id not in seq_info['CDS_Count']):
@@ -223,7 +227,8 @@ def index_seqs(in_seq_files=[],seq_type=None,rename_seqs=False,out_seq_file=None
             if (seqobj.id in seen_ids):
                 raise Exception(f'Duplicated ID: {seqobj.id} in {seq_file}')
             seen_ids[seqobj.id] = True
-            if ((out_seq_file) and (seq_passed == True)):
+            if ((seq_passed == True) and (out_seq_file)):
+                #print(f"{seqobj.id} LEN: {seq_length} PASS: {seq_passed}")
                 SeqIO.write(seqobj, OUT, "fasta")
     if (out_seq_file):
         OUT.close()
