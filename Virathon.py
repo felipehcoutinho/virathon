@@ -95,6 +95,9 @@ def central():
         merged_genomes_file = 'All_Genomic.fasta'
         index_seqs(in_seq_files=args.genome_files,rename_seqs=args.rename_seqs, seq_type="genomic", out_seq_file=merged_genomes_file)
         #print(f"Merged genomic seqs file: {merged_genomes_file}")
+    #Some functions will fail if no genes/cds file is provided. So prodigal is called if these files will be necessayr in the future, even if the user has nto specified so
+    if ((args.gene_files == None) and (args.make_pops_module == True)):
+        args.call_prodigal_module = True
     #Perform gene calling with prodigal through the call_prodigal function if specified by the user
     if (args.call_prodigal_module == True):
         call_prodigal(merged_genomes_file)
@@ -605,7 +608,7 @@ def calc_pps(genome_file,cds,pps_subject_fasta,pps_subject_db,precomp_hits_table
     prefix_subject_fasta_file = get_prefix(pps_subject_fasta,'(faa)|(fasta)|(fa)')
     prefix_subject_DB_file = get_prefix(pps_subject_db,args.in_format)
     prefix_cds_file = get_prefix(cds,'(faa)|(fasta)|(fa)')
-    index_seqs([genome_file],cds,False,'NA',False)
+    #Removed the index seqs line that used to be here,as any cds or gene files should be idnexed automatically. Gotta test it to make sure it works as intend in this function.
     outfile = 'NA'
     if (precomp_hits_table != "NA"):
         outfile = precomp_hits_table
@@ -693,7 +696,8 @@ def call_spades(raw_read_table="",spades_memory=250):
                 subprocess.call(command, shell=True)
             out_file = f'Assembly_{group}/scaffolds.fasta'
             scaffold_files.append(out_file)
-    index_seqs(scaffold_files,'',True,'Merged_Scaffolds.fasta',True)
+    #Replaced indexing line to match new synttax of that function 
+    index_seqs(in_seq_files=scaffold_files,rename_seqs=True,seq_type="genomic",out_seq_file='Merged_Scaffolds.fasta')
     filter_seqs('Merged_Scaffolds.fasta',1000,999999999)
     return('Filtered_Merged_Scaffolds.fasta')
 
@@ -987,11 +991,7 @@ def make_pops(genome_file,gene_file):
     print('Clustering sequences into viral populations')
     #check if there is a genes file. Otherwise run prodigal
     if (not gene_file):
-        print('No gene file identified')
-        (cds_file,gene_file,gff_file) = call_prodigal(genome_file)
-        #Index the length and CDS_Count of the genomic sequences. This will be necessary when clustering the VPs
-        index_seqs([],gene_file,False,'NA',False)
-        
+        exit('No gene file identified for viral population clustering. Either call prodigal or provide a gene file')
     #Build blast db of the genes file
     prefix_genome_file = get_prefix(genome_file,args.in_format)
     blastn_out_file_name = prefix_genome_file+'xSelf.blastn'
