@@ -7,9 +7,9 @@ from Bio import SearchIO
 from Bio.SeqUtils import GC
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from matplotlib import pyplot as plt
+#from matplotlib import pyplot as plt
 import pandas as pd
-import seaborn as sns
+#import seaborn as sns
 import argparse
 import subprocess
 import re
@@ -45,7 +45,6 @@ parser.add_argument("--rafah_min_score", help="Minimum RaFAH score to consider a
 parser.add_argument("--metabat2", help="Flag to perform sequence binning through Metabat2", default=False, type=bool)
 parser.add_argument("--make_pops_module", help="Flag to run the viral population pipeline", default=False, type=bool)
 parser.add_argument("--make_plots_module", help="Flag to run the Plotting module based on the collected Seq Info", default=False, type=bool)
-parser.add_argument("--avap_scores", help="Flago Calculate all-vs-all Pairwise Protein Scores", default=False, type=bool)
 parser.add_argument("--pairwise_protein_scores", help="Flag to run the Paiwise Protein Scores (PPS) module", default=False, type=bool)
 parser.add_argument("--pps_subject_fasta", help="Fasta file containing the subject protein sequences to be used by the PPS module", default='NA', type=str)
 parser.add_argument("--pps_subject_db", help="MMSeqs fomated Database file containing the subject protein sequences to be used by the PPS module", default='NA', type=str)
@@ -169,7 +168,7 @@ def central():
     if (args.abundance_table == True):
         abundance_out_file = calc_abundance(merged_genomes_file,args.bowtiedb,args.metagenomes_dir,args.metagenomes_extension,args.abundance_max_reads,args.bowtie_mode,args.abundance_min_count,args.raw_read_table)
     if (args.pairwise_protein_scores == True):
-        calc_pps(merged_genomes_file,merged_cds_file,args.pps_subject_fasta,args.pps_subject_db,args.pps_hits_table)
+        calc_pps(merged_genomes_file,args.cds,args.pps_subject_fasta,args.pps_subject_db,args.pps_hits_table)
     if (args.call_vpf_class == True):
         vpf_class_outfile = call_vpf_class(merged_genomes_file,args.vpf_class_yaml)
     #Always print the results collected in seq_info
@@ -643,8 +642,8 @@ def print_scores(recip_scores,recip_scores_file,min_aai,min_matched,min_perc_mat
                     line_list = [genomeA,genomeB,recip_scores['AAI'][genomeA][genomeB],recip_scores['Matched_CDS'][genomeA][genomeB],recip_scores['Perc_Matched_CDS'][genomeA][genomeB]]
                     line = '\t'.join(str(field) for field in line_list)
                     OUT.write(f'{line}\n')
-
-def calc_recip_scores(infile, group="Original_File"):
+            
+def calc_recip_scores(infile):
     #Initialize 2D dictionary that will hold the reciprocal scores
     recip_scores = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     #Parse the m8 file
@@ -663,9 +662,6 @@ def calc_recip_scores(infile, group="Original_File"):
                     #Derive the original scaffold name from the CDS id
                     genomeA = re.sub('_(\\d)+$','',qresult.id)
                     genomeB = re.sub('_(\\d)+$','',hit.id)
-                    if (group != "NA"):
-                        genomeA = seq_info[group][genomeA]
-                        genomeB = seq_info[group][genomeB]
                     #Only go on if matches are between two different scaffolds and two different CDS
                     if ((genomeA != genomeB) and (qresult.id != hit.id)):
                         #Only go on if the query/hit pair has not been processed before
@@ -682,42 +678,6 @@ def calc_recip_scores(infile, group="Original_File"):
             recip_scores['AAI'][genomeA][genomeB] = recip_scores['ID_Sum'][genomeA][genomeB] / recip_scores['Matched_CDS'][genomeA][genomeB]
     
     return (recip_scores)
-            
-# def calc_recip_scores(infile):
-#     #Initialize 2D dictionary that will hold the reciprocal scores
-#     recip_scores = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-#     #Parse the m8 file
-#     print ('Parsing m8 output',infile)
-#     #Seen hits will keep track of the seen CDS pairs so to not overestimate AAI and Perc matched genes
-#     seen_hits = defaultdict(dict)
-#     #Iterare over queries
-#     for qresult in SearchIO.parse(infile, 'blast-tab'):
-#         #Iterate over hits in the query
-#         for hit in qresult.hits:
-#             #Iterate over HSPs in the hits
-#             for hsp in hit.hsps:
-#                 #Check if the HSP passes established blast cutoffs
-#                 is_valid = check_match_cutoff(hsp,0.001,30,0.3,30)
-#                 if (is_valid):
-#                     #Derive the original scaffold name from the CDS id
-#                     genomeA = re.sub('_(\\d)+$','',qresult.id)
-#                     genomeB = re.sub('_(\\d)+$','',hit.id)
-#                     #Only go on if matches are between two different scaffolds and two different CDS
-#                     if ((genomeA != genomeB) and (qresult.id != hit.id)):
-#                         #Only go on if the query/hit pair has not been processed before
-#                         if (genomeB not in seen_hits[qresult.id].keys()):
-#                             seen_hits[qresult.id][genomeB] = 1
-#                             recip_scores['Matched_CDS'][genomeA][genomeB] += 1
-#                             recip_scores['Perc_Matched_CDS'][genomeA][genomeB] += ((1 / seq_info['CDS_Count'][genomeA]) * 100)
-#                             recip_scores['ID_Sum'][genomeA][genomeB] += (hsp.ident_pct * 100)
-    
-#     #Calculate AAI between genome pairs
-#     print('Calculating AAI')
-#     for genomeA in recip_scores['Matched_CDS'].keys():
-#         for genomeB in recip_scores['Matched_CDS'][genomeA].keys():
-#             recip_scores['AAI'][genomeA][genomeB] = recip_scores['ID_Sum'][genomeA][genomeB] / recip_scores['Matched_CDS'][genomeA][genomeB]
-    
-#     return (recip_scores)
                             
     
 
