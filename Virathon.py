@@ -168,7 +168,7 @@ def central():
     if (args.abundance_table == True):
         abundance_out_file = calc_abundance(merged_genomes_file,args.bowtiedb,args.metagenomes_dir,args.metagenomes_extension,args.abundance_max_reads,args.bowtie_mode,args.abundance_min_count,args.raw_read_table)
     if (args.pairwise_protein_scores == True):
-        calc_pps(merged_genomes_file,args.cds,args.pps_subject_fasta,args.pps_subject_db,args.pps_hits_table)
+        calc_pps(merged_genomes_file,merged_cds_file,args.pps_subject_fasta,args.pps_subject_db,args.pps_hits_table)
     if (args.call_vpf_class == True):
         vpf_class_outfile = call_vpf_class(merged_genomes_file,args.vpf_class_yaml)
     #Always print the results collected in seq_info
